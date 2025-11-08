@@ -1,6 +1,6 @@
 [package]
 name = "whispo"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 authors = ["Frank Dierolf <frank_dierolf@web.de>"]
 description = "Voice-to-text CLI for terminal users using OpenAI Whisper API"
