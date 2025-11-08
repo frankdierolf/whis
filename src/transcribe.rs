@@ -16,8 +16,8 @@ pub fn transcribe_audio(api_key: &str, audio_data: Vec<u8>) -> Result<String> {
         .part(
             "file",
             multipart::Part::bytes(audio_data)
-                .file_name("audio.wav")
-                .mime_str("audio/wav")?,
+                .file_name("audio.mp3")
+                .mime_str("audio/mpeg")?,
         );
 
     let response = client

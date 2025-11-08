@@ -7,6 +7,20 @@ use anyhow::Result;
 use std::io::{self, Write};
 
 fn main() -> Result<()> {
+    // Check if FFmpeg is available
+    if let Err(_) = std::process::Command::new("ffmpeg")
+        .arg("-version")
+        .output()
+    {
+        eprintln!("Error: FFmpeg is not installed or not in PATH.");
+        eprintln!("\nWhispo requires FFmpeg for audio compression.");
+        eprintln!("Please install FFmpeg:");
+        eprintln!("  - Ubuntu/Debian: sudo apt install ffmpeg");
+        eprintln!("  - macOS: brew install ffmpeg");
+        eprintln!("  - Or visit: https://ffmpeg.org/download.html\n");
+        std::process::exit(1);
+    }
+
     // Load configuration
     let config = match config::Config::from_env() {
         Ok(cfg) => cfg,
