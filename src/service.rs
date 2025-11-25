@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use std::io::Write;
 use std::sync::{Arc, Mutex};
+use std::sync::mpsc::Receiver;
 use std::time::Duration;
 use tokio::time::sleep;
 
@@ -35,7 +36,7 @@ impl Service {
     }
 
     /// Run the service main loop
-    pub async fn run(&self) -> Result<()> {
+    pub async fn run(&self, hotkey_rx: Option<Receiver<()>>) -> Result<()> {
         // Create IPC server
         let ipc_server = IpcServer::new()
             .context("Failed to create IPC server")?;
@@ -57,6 +58,13 @@ impl Service {
                 }
             }
 
+            // Check for hotkey toggle signal (non-blocking)
+            if let Some(ref rx) = hotkey_rx {
+                if rx.try_recv().is_ok() {
+                    self.handle_toggle().await;
+                }
+            }
+
             // Small sleep to prevent busy waiting
             sleep(Duration::from_millis(10)).await;
         }
@@ -65,7 +73,6 @@ impl Service {
     /// Handle an IPC message
     async fn handle_message(&self, message: IpcMessage) -> IpcResponse {
         match message {
-            IpcMessage::Toggle => self.handle_toggle().await,
             IpcMessage::Stop => {
                 println!("Stop signal received");
                 // Return Ok response before exiting

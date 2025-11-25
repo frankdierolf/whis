@@ -6,7 +6,6 @@ use std::path::PathBuf;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum IpcMessage {
-    Toggle,
     Stop,
     Status,
 }
