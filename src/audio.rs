@@ -6,6 +6,7 @@ pub struct AudioRecorder {
     samples: Arc<Mutex<Vec<f32>>>,
     sample_rate: u32,
     channels: u16,
+    stream: Option<cpal::Stream>,
 }
 
 impl AudioRecorder {
@@ -14,6 +15,7 @@ impl AudioRecorder {
             samples: Arc::new(Mutex::new(Vec::new())),
             sample_rate: 44100, // Default sample rate
             channels: 1, // Default channels
+            stream: None,
         })
     }
 
@@ -42,8 +44,8 @@ impl AudioRecorder {
 
         stream.play()?;
 
-        // Keep stream alive by leaking it (we'll stop by dropping the recorder)
-        std::mem::forget(stream);
+        // Store stream to keep it alive; dropping it will release the microphone
+        self.stream = Some(stream);
 
         Ok(())
     }
@@ -75,7 +77,10 @@ impl AudioRecorder {
         Ok(stream)
     }
 
-    pub fn stop_and_save(&self) -> Result<Vec<u8>> {
+    pub fn stop_and_save(&mut self) -> Result<Vec<u8>> {
+        // Drop the stream first to release the microphone
+        self.stream = None;
+
         let samples = self.samples.lock().unwrap();
 
         if samples.is_empty() {
