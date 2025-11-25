@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use std::io::Write;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::time::sleep;
@@ -20,6 +21,7 @@ pub struct Service {
     state: Arc<Mutex<ServiceState>>,
     recorder: Arc<Mutex<Option<AudioRecorder>>>,
     config: Config,
+    counter: Arc<Mutex<u32>>,
 }
 
 impl Service {
@@ -28,19 +30,17 @@ impl Service {
             state: Arc::new(Mutex::new(ServiceState::Idle)),
             recorder: Arc::new(Mutex::new(None)),
             config,
+            counter: Arc::new(Mutex::new(0)),
         })
     }
 
     /// Run the service main loop
     pub async fn run(&self) -> Result<()> {
-        println!("Whispo service starting...");
-
         // Create IPC server
         let ipc_server = IpcServer::new()
             .context("Failed to create IPC server")?;
 
-        println!("Service running. Press Ctrl+C to stop.");
-        println!("Use 'whispo toggle' to start/stop recording.");
+        println!("Whispo listening. Ctrl+C to stop.");
 
         loop {
             // Check for incoming IPC connections (non-blocking)
@@ -92,14 +92,20 @@ impl Service {
 
         match current_state {
             ServiceState::Idle => {
-                // Start recording
+                // Increment counter and start recording
+                let count = {
+                    let mut c = self.counter.lock().unwrap();
+                    *c += 1;
+                    *c
+                };
                 match self.start_recording().await {
                     Ok(_) => {
-                        println!("🎙️  Recording started");
+                        print!("#{count} recording...");
+                        let _ = std::io::stdout().flush();
                         IpcResponse::Recording
                     }
                     Err(e) => {
-                        eprintln!("Error starting recording: {e}");
+                        println!("#{count} error: {e}");
                         IpcResponse::Error(e.to_string())
                     }
                 }
@@ -107,17 +113,21 @@ impl Service {
             ServiceState::Recording => {
                 // Stop recording and process
                 *self.state.lock().unwrap() = ServiceState::Processing;
-                println!("⏹️  Recording stopped, processing...");
+                let count = *self.counter.lock().unwrap();
+
+                // Show processing state (overwrite recording line)
+                print!("\r#{count} processing...");
+                let _ = std::io::stdout().flush();
 
                 match self.stop_and_transcribe().await {
                     Ok(_) => {
                         *self.state.lock().unwrap() = ServiceState::Idle;
-                        println!("✓ Transcription copied to clipboard");
+                        println!("\r#{count} done            ");
                         IpcResponse::Ok
                     }
                     Err(e) => {
                         *self.state.lock().unwrap() = ServiceState::Idle;
-                        eprintln!("Error processing: {e}");
+                        println!("\r#{count} error: {e}");
                         IpcResponse::Error(e.to_string())
                     }
                 }
@@ -143,7 +153,7 @@ impl Service {
     /// Stop recording and transcribe
     async fn stop_and_transcribe(&self) -> Result<()> {
         // Get the recorder
-        let recorder = self.recorder.lock().unwrap().take()
+        let mut recorder = self.recorder.lock().unwrap().take()
             .context("No active recording")?;
 
         // Stop and save audio (blocking operation, run in tokio blocking task)
