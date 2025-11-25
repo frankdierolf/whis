@@ -1,5 +1,7 @@
 # whis
 
+Website: [whis.ink](https://whis.ink)
+
 Minimal voice-to-text CLI for terminal users. Record your voice, get instant transcription to clipboard.
 
 ## Demo
