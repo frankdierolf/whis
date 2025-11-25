@@ -31,16 +31,23 @@ whispo
 
 That's it. Paste into your AI coding tool.
 
-## Optional: Hotkey Mode (GNOME Only)
+## Hotkey Mode
 
-For hands-free operation on GNOME desktops (Ubuntu, Omakub, etc.):
+For hands-free operation with a global hotkey:
 
 ```bash
-whispo setup-hotkey    # One-time setup
-whispo listen          # Start background service
+# One-time setup (run these once, then logout/login)
+sudo usermod -aG input $USER
+echo 'KERNEL=="uinput", GROUP="input", MODE="0660"' | sudo tee /etc/udev/rules.d/99-uinput.rules
+sudo udevadm control --reload-rules && sudo udevadm trigger
 
-# Press your hotkey (default: Ctrl+Shift+R) anywhere to toggle recording
+# Start the service with built-in hotkey
+whispo listen                        # Default: Ctrl+Shift+R
+whispo listen --hotkey "ctrl+alt+r"  # Custom hotkey
+whispo listen -k "super+r"           # Short form
 ```
+
+Press your hotkey anywhere to toggle recording. Works on all Linux distros (X11 and Wayland).
 
 Other commands:
 ```bash
@@ -50,12 +57,12 @@ whispo stop            # Stop background service
 
 ## Requirements
 
-- Rust (latest stable)
+- cargo (Rust package manager)
 - OpenAI API key ([get one here](https://platform.openai.com/api-keys))
 - FFmpeg (for audio compression)
 - Linux with working microphone
 - ALSA or PulseAudio
-- GNOME desktop (for hotkey mode only)
+- `input` group + uinput access (for hotkey mode, see setup above)
 
 ### Installing FFmpeg
 
@@ -79,11 +86,11 @@ Binary will be at `./target/release/whispo`
 
 **How does hotkey mode work?**
 
-A lightweight background service communicates via Unix sockets. GNOME's native keyboard shortcuts call `whispo toggle`. No special permissions required. Works on Wayland and X11.
+A lightweight background service listens for your hotkey via evdev (works on both X11 and Wayland). The `input` group and uinput access allow reading and re-emitting keyboard events without root.
 
-**Can I use hotkey mode on other desktop environments?**
+**What hotkeys can I use?**
 
-The `setup-hotkey` command is GNOME-specific, but you can manually configure hotkeys in KDE, i3, sway, etc. to call `whispo toggle`.
+Combinations of modifiers (`ctrl`, `shift`, `alt`, `super`) and keys (`a-z`, `0-9`, `f1-f12`, `space`, `enter`, etc.). Examples: `ctrl+shift+r`, `super+space`, `alt+1`.
 
 **Does the simple mode still work?**
 
