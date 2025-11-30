@@ -22,3 +22,9 @@ dist/
 
 # Tauri generated
 gen/
+
+# Flatpak build artifacts
+.flatpak-builder/
+flatpak-build/
+build-dir/
+*.flatpak

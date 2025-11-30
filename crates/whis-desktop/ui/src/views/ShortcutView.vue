@@ -171,6 +171,78 @@ function stopRecording() {
         </template>
       </template>
 
+      <!-- CLI Fallback (Wayland without portal support) -->
+      <template v-else-if="backendInfo?.backend === 'CLIFallback'">
+        <div class="notice warning">
+          <span class="notice-marker">[!]</span>
+          <p>Global shortcuts require manual configuration on {{ backendInfo.compositor }}.</p>
+        </div>
+
+        <div class="instructions">
+          <label>setup instructions</label>
+
+          <!-- GNOME -->
+          <template v-if="backendInfo.compositor.toLowerCase().includes('gnome')">
+            <ol class="steps">
+              <li>Open <strong>Settings</strong> → <strong>Keyboard</strong> → <strong>Custom Shortcuts</strong></li>
+              <li>Add a new shortcut with these values:</li>
+            </ol>
+            <div class="command-block">
+              <div class="command-row">
+                <span class="command-label">Name:</span>
+                <code>Whis Toggle Recording</code>
+              </div>
+              <div class="command-row">
+                <span class="command-label">Command:</span>
+                <code>flatpak run ink.whis.desktop --toggle</code>
+              </div>
+              <div class="command-row">
+                <span class="command-label">Shortcut:</span>
+                <code>{{ currentShortcut }}</code>
+              </div>
+            </div>
+          </template>
+
+          <!-- KDE/Plasma -->
+          <template v-else-if="backendInfo.compositor.toLowerCase().includes('kde') || backendInfo.compositor.toLowerCase().includes('plasma')">
+            <ol class="steps">
+              <li>Open <strong>System Settings</strong> → <strong>Shortcuts</strong> → <strong>Custom Shortcuts</strong></li>
+              <li>Add a new shortcut:</li>
+            </ol>
+            <div class="command-block">
+              <div class="command-row">
+                <span class="command-label">Command:</span>
+                <code>flatpak run ink.whis.desktop --toggle</code>
+              </div>
+            </div>
+          </template>
+
+          <!-- Sway -->
+          <template v-else-if="backendInfo.compositor.toLowerCase().includes('sway')">
+            <p class="hint">Add to <code>~/.config/sway/config</code>:</p>
+            <div class="command">
+              <code>bindsym {{ currentShortcut.toLowerCase() }} exec flatpak run ink.whis.desktop --toggle</code>
+            </div>
+          </template>
+
+          <!-- Hyprland -->
+          <template v-else-if="backendInfo.compositor.toLowerCase().includes('hyprland')">
+            <p class="hint">Add to <code>~/.config/hypr/hyprland.conf</code>:</p>
+            <div class="command">
+              <code>bind = {{ currentShortcut.replace(/\+/g, ', ') }}, exec, flatpak run ink.whis.desktop --toggle</code>
+            </div>
+          </template>
+
+          <!-- Generic -->
+          <template v-else>
+            <p class="hint">Configure your compositor to run:</p>
+            <div class="command">
+              <code>flatpak run ink.whis.desktop --toggle</code>
+            </div>
+          </template>
+        </div>
+      </template>
+
       <!-- Tauri plugin (X11/macOS/Windows) -->
       <template v-else>
         <div class="field">
@@ -362,5 +434,70 @@ function stopRecording() {
   border-radius: 4px;
   font-size: 12px;
   color: var(--text);
+}
+
+/* CLI Fallback instructions */
+.notice.warning {
+  border-color: var(--warning, #f59e0b);
+}
+
+.notice.warning .notice-marker {
+  color: var(--warning, #f59e0b);
+}
+
+.instructions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.instructions label {
+  font-size: 11px;
+  text-transform: lowercase;
+  color: var(--text-weak);
+}
+
+.steps {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 12px;
+  color: var(--text);
+  line-height: 1.6;
+}
+
+.steps li {
+  margin-bottom: 4px;
+}
+
+.steps strong {
+  color: var(--text-strong);
+}
+
+.command-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: var(--bg-weak);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.command-row {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.command-label {
+  font-size: 11px;
+  color: var(--text-weak);
+  min-width: 70px;
+}
+
+.command-block code {
+  font-family: var(--font);
+  font-size: 11px;
+  color: var(--accent);
 }
 </style>

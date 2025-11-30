@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>ink.whis.desktop</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Whis</name>
+  <summary>Turn speech into text</summary>
+  <description>
+    <p>Whis is a desktop application that transcribes your voice to text using OpenAI's Whisper API. Press a global shortcut to start recording, release to transcribe, and the text is automatically copied to your clipboard.</p>
+    <p>Features:</p>
+    <ul>
+      <li>Global keyboard shortcut (works in any application)</li>
+      <li>System tray integration with recording status</li>
+      <li>Automatic clipboard paste</li>
+      <li>X11 and Wayland support</li>
+    </ul>
+  </description>
+  <url type="homepage">https://whis.ink</url>
+  <url type="bugtracker">https://github.com/frankdierolf/whis/issues</url>
+  <url type="vcs-browser">https://github.com/frankdierolf/whis</url>
+  <launchable type="desktop-id">ink.whis.desktop.desktop</launchable>
+  <screenshots>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/frankdierolf/whis/v0.5.1/crates/whis-desktop/packaging/screenshots/1-about.png</image>
+      <caption>Your voice, piped to clipboard</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/frankdierolf/whis/v0.5.1/crates/whis-desktop/packaging/screenshots/2-start-recording.png</image>
+      <caption>Start recording from the system tray</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/frankdierolf/whis/v0.5.1/crates/whis-desktop/packaging/screenshots/3-transcribed.png</image>
+      <caption>Transcribed speech ready to paste anywhere</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/frankdierolf/whis/v0.5.1/crates/whis-desktop/packaging/screenshots/4-settings.png</image>
+      <caption>Configure shortcuts and API keys</caption>
+    </screenshot>
+  </screenshots>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.5.0" date="2025-11-30">
+      <description>
+        <p>Initial Flatpak release with desktop application</p>
+        <ul>
+          <li>System tray with global shortcut support</li>
+          <li>Vue 3.6 settings UI</li>
+          <li>X11 and Wayland support via XDG Portal</li>
+        </ul>
+      </description>
+    </release>
+  </releases>
+  <developer id="ink.whis">
+    <name>Frank Dierolf</name>
+  </developer>
+  <branding>
+    <color type="primary" scheme_preference="light">#FFE066</color>
+    <color type="primary" scheme_preference="dark">#B38F00</color>
+  </branding>
+  <categories>
+    <category>Utility</category>
+    <category>Audio</category>
+  </categories>
+  <keywords>
+    <keyword>voice</keyword>
+    <keyword>transcription</keyword>
+    <keyword>whisper</keyword>
+    <keyword>speech-to-text</keyword>
+  </keywords>
+</component>

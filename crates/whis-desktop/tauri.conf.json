@@ -13,7 +13,7 @@
     "withGlobalTauri": true,
     "trayIcon": {
       "iconPath": "icons/icon-idle.png",
-      "iconAsTemplate": true
+      "iconAsTemplate": false
     },
     "windows": []
   },

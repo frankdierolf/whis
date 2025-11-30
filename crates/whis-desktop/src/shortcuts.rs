@@ -296,7 +296,10 @@ pub fn setup_tauri_shortcut(app: &tauri::App, shortcut_str: &str) -> Result<(), 
             .with_handler(move |_app, _shortcut, event| {
                 if event.state() == ShortcutState::Pressed {
                     println!("Tauri shortcut triggered!");
-                    crate::tray::toggle_recording_public(app_handle.clone());
+                    let handle = app_handle.clone();
+                    tauri::async_runtime::spawn(async move {
+                        crate::tray::toggle_recording_public(handle);
+                    });
                 }
             })
             .build(),
@@ -338,7 +341,10 @@ pub fn setup_shortcuts(app: &tauri::App) {
                 if let Err(e) = setup_portal_shortcuts(
                     shortcut_str,
                     move || {
-                        crate::tray::toggle_recording_public(toggle_handle.clone());
+                        let handle = toggle_handle.clone();
+                        tauri::async_runtime::spawn(async move {
+                            crate::tray::toggle_recording_public(handle);
+                        });
                     },
                     app_handle_for_state,
                 )
@@ -462,7 +468,11 @@ pub fn start_ipc_listener(app_handle: AppHandle) {
                         let cmd = String::from_utf8_lossy(&buf[..n]);
                         if cmd.trim() == "toggle" {
                             println!("IPC: toggle command received");
-                            crate::tray::toggle_recording_public(app_handle.clone());
+                            let handle = app_handle.clone();
+                            // Dispatch to Tauri's async runtime - the IPC thread has no Tokio runtime
+                            tauri::async_runtime::spawn(async move {
+                                crate::tray::toggle_recording_public(handle);
+                            });
                         }
                     }
                 }

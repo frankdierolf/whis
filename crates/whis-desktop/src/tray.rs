@@ -1,32 +1,21 @@
 use crate::state::{AppState, RecordingState};
-use std::time::Duration;
 use tauri::{
     image::Image,
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::TrayIconBuilder,
     AppHandle, Manager, WebviewWindowBuilder, WebviewUrl,
 };
-use tokio::time::interval;
 use whis_core::{
     copy_to_clipboard, parallel_transcribe, transcribe_audio, AudioRecorder, AudioResult, Config,
 };
 
-// Animation frames (pre-loaded at compile time)
-const RECORDING_FRAMES: [&[u8]; 4] = [
-    include_bytes!("../icons/recording-1.png"),
-    include_bytes!("../icons/recording-2.png"),
-    include_bytes!("../icons/recording-3.png"),
-    include_bytes!("../icons/recording-4.png"),
-];
-
-const PROCESSING_FRAMES: [&[u8]; 4] = [
-    include_bytes!("../icons/processing-1.png"),
-    include_bytes!("../icons/processing-2.png"),
-    include_bytes!("../icons/processing-3.png"),
-    include_bytes!("../icons/processing-4.png"),
-];
+// Static icons for each state (pre-loaded at compile time)
+const ICON_IDLE: &[u8] = include_bytes!("../icons/icon-idle.png");
+const ICON_RECORDING: &[u8] = include_bytes!("../icons/icon-recording.png");
+const ICON_PROCESSING: &[u8] = include_bytes!("../icons/icon-processing.png");
 
 pub const TRAY_ID: &str = "whis-tray";
+
 
 pub fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     // Create menu items
@@ -49,14 +38,22 @@ pub fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let (width, height) = rgba.dimensions();
     let idle_icon = Image::new_owned(rgba.into_raw(), width, height);
 
+    // Use app cache dir for tray icons so Flatpak host can access them
+    // (default /tmp is sandboxed and GNOME AppIndicator can't read it)
+    let cache_dir = app.path().app_cache_dir().expect("Failed to get app cache dir");
+
     let _tray = TrayIconBuilder::with_id(TRAY_ID)
         .icon(idle_icon)
+        .temp_dir_path(cache_dir)
         .menu(&menu)
         .show_menu_on_left_click(false)
         .tooltip("Whis - Click to record")
         .on_menu_event(|app, event| match event.id.as_ref() {
             "record" => {
-                toggle_recording(app.clone());
+                let app_clone = app.clone();
+                tauri::async_runtime::spawn(async move {
+                    toggle_recording(app_clone);
+                });
             }
             "settings" => {
                 open_settings_window(app.clone());
@@ -70,7 +67,10 @@ pub fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             use tauri::tray::TrayIconEvent;
             if let TrayIconEvent::Click { button, .. } = event {
                 if button == tauri::tray::MouseButton::Left {
-                    toggle_recording(tray.app_handle().clone());
+                    let app_handle = tray.app_handle().clone();
+                    tauri::async_runtime::spawn(async move {
+                        toggle_recording(app_handle);
+                    });
                 }
             }
         })
@@ -252,11 +252,6 @@ fn update_tray(app: &AppHandle, new_state: RecordingState) {
         let _ = menu_item.set_enabled(new_state != RecordingState::Processing);
     }
 
-    // Cancel any existing animation
-    if let Some(handle) = app_state.animation_handle.lock().unwrap().take() {
-        handle.abort();
-    }
-
     if let Some(tray) = app.tray_by_id(TRAY_ID) {
         // Update tooltip
         let tooltip = match new_state {
@@ -266,53 +261,27 @@ fn update_tray(app: &AppHandle, new_state: RecordingState) {
         };
         let _ = tray.set_tooltip(Some(tooltip));
 
-        match new_state {
-            RecordingState::Idle => {
-                // Set static idle icon
-                set_tray_icon(&tray, include_bytes!("../icons/icon-idle.png"));
-            }
-            RecordingState::Recording | RecordingState::Processing => {
-                // Start animation
-                let frames = match new_state {
-                    RecordingState::Recording => &RECORDING_FRAMES,
-                    RecordingState::Processing => &PROCESSING_FRAMES,
-                    _ => unreachable!(),
-                };
-
-                // Set first frame immediately
-                set_tray_icon(&tray, frames[0]);
-
-                // Spawn animation task using tokio directly (for abort_handle support)
-                let app_clone = app.clone();
-                let frames: Vec<&'static [u8]> = frames.to_vec();
-                let task = tokio::spawn(async move {
-                    let mut ticker = interval(Duration::from_millis(250));
-                    let mut frame_idx = 1; // Start from frame 1 since we already showed frame 0
-
-                    loop {
-                        ticker.tick().await;
-
-                        if let Some(tray) = app_clone.tray_by_id(TRAY_ID) {
-                            set_tray_icon(&tray, frames[frame_idx]);
-                        }
-
-                        frame_idx = (frame_idx + 1) % frames.len();
-                    }
-                });
-
-                // Store the abort handle so we can cancel the animation later
-                *app_state.animation_handle.lock().unwrap() = Some(task.abort_handle());
-            }
-        }
+        // Set static icon based on state
+        let icon = match new_state {
+            RecordingState::Idle => ICON_IDLE,
+            RecordingState::Recording => ICON_RECORDING,
+            RecordingState::Processing => ICON_PROCESSING,
+        };
+        set_tray_icon(&tray, icon);
     }
 }
 
 fn set_tray_icon(tray: &tauri::tray::TrayIcon, icon_bytes: &[u8]) {
-    if let Ok(img) = image::load_from_memory(icon_bytes) {
-        let rgba = img.to_rgba8();
-        let (width, height) = rgba.dimensions();
-        let icon = Image::new_owned(rgba.into_raw(), width, height);
-        let _ = tray.set_icon(Some(icon));
+    match image::load_from_memory(icon_bytes) {
+        Ok(img) => {
+            let rgba = img.to_rgba8();
+            let (width, height) = rgba.dimensions();
+            let icon = Image::new_owned(rgba.into_raw(), width, height);
+            if let Err(e) = tray.set_icon(Some(icon)) {
+                eprintln!("Failed to set tray icon: {e}");
+            }
+        }
+        Err(e) => eprintln!("Failed to load tray icon: {e}"),
     }
 }
 

@@ -1,6 +1,5 @@
 use std::sync::Mutex;
 use tauri::menu::MenuItem;
-use tokio::task::AbortHandle;
 use whis_core::{AudioRecorder, Config};
 use crate::settings::Settings;
 
@@ -19,8 +18,6 @@ pub struct AppState {
     pub settings: Mutex<Settings>,
     /// The actual shortcut binding from the XDG Portal (Wayland only)
     pub portal_shortcut: Mutex<Option<String>>,
-    /// Handle to abort the tray icon animation task
-    pub animation_handle: Mutex<Option<AbortHandle>>,
 }
 
 impl AppState {
@@ -32,7 +29,6 @@ impl AppState {
             record_menu_item: Mutex::new(None),
             settings: Mutex::new(settings),
             portal_shortcut: Mutex::new(None),
-            animation_handle: Mutex::new(None),
         }
     }
 }
