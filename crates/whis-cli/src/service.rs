@@ -2,14 +2,13 @@ use anyhow::{Context, Result};
 use std::io::Write;
 use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 use tokio::time::sleep;
 
-use crate::audio::{AudioRecorder, AudioResult};
-use crate::clipboard;
-use crate::config::Config;
 use crate::ipc::{IpcMessage, IpcResponse, IpcServer};
-use crate::transcribe;
+use std::time::Duration;
+use whis_core::{
+    AudioRecorder, AudioResult, Config, copy_to_clipboard, parallel_transcribe, transcribe_audio,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum ServiceState {
@@ -176,20 +175,18 @@ impl Service {
         let transcription = match audio_result {
             AudioResult::Single(audio_data) => {
                 // Small file - use simple blocking transcription
-                tokio::task::spawn_blocking(move || {
-                    transcribe::transcribe_audio(&api_key, audio_data)
-                })
-                .await
-                .context("Failed to join task")??
+                tokio::task::spawn_blocking(move || transcribe_audio(&api_key, audio_data))
+                    .await
+                    .context("Failed to join task")??
             }
             AudioResult::Chunked(chunks) => {
                 // Large file - use parallel async transcription
-                transcribe::parallel_transcribe(&api_key, chunks, None).await?
+                parallel_transcribe(&api_key, chunks, None).await?
             }
         };
 
         // Copy to clipboard (blocking operation)
-        tokio::task::spawn_blocking(move || clipboard::copy_to_clipboard(&transcription))
+        tokio::task::spawn_blocking(move || copy_to_clipboard(&transcription))
             .await
             .context("Failed to join task")??;
 

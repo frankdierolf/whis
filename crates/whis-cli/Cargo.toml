@@ -1,0 +1,24 @@
+[package]
+name = "whis"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Voice-to-text CLI using OpenAI Whisper API"
+repository.workspace = true
+homepage.workspace = true
+keywords = ["voice", "transcription", "whisper", "cli", "audio"]
+categories = ["command-line-utilities", "multimedia::audio"]
+
+[[bin]]
+name = "whis"
+path = "src/main.rs"
+
+[dependencies]
+whis-core.workspace = true
+anyhow.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+clap.workspace = true
+rdev.workspace = true

@@ -1,0 +1,27 @@
+{
+  "name": "whis-desktop-ui",
+  "version": "0.5.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc -b && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.0.0",
+    "@tauri-apps/plugin-process": "^2.3.1",
+    "vue": "^3.6.0-alpha.5"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "@vitejs/plugin-vue": "^6.0.2",
+    "@vue/tsconfig": "^0.8.1",
+    "esbuild": "^0.27.0",
+    "typescript": "~5.9.3",
+    "vite": "npm:rolldown-vite@7.2.8",
+    "vue-tsc": "^3.1.5"
+  },
+  "overrides": {
+    "vite": "npm:rolldown-vite@7.2.8"
+  }
+}
