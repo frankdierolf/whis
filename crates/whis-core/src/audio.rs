@@ -181,13 +181,12 @@ impl AudioRecorder {
         // Use unique temp file names to support parallel FFmpeg calls
         let temp_dir = std::env::temp_dir();
         let unique_id = format!(
-            "{}_{}_{}",
+            "{}_{}_{suffix}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_nanos(),
-            suffix
         );
         let wav_path = temp_dir.join(format!("whis_{unique_id}.wav"));
         let mp3_path = temp_dir.join(format!("whis_{unique_id}.mp3"));

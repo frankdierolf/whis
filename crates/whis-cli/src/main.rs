@@ -1,14 +1,13 @@
-mod audio;
-mod clipboard;
-mod config;
 mod hotkey;
 mod ipc;
 mod service;
-mod transcribe;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use std::io::{self, Write};
+use whis_core::{
+    AudioRecorder, AudioResult, Config, copy_to_clipboard, parallel_transcribe, transcribe_audio,
+};
 
 #[derive(Parser)]
 #[command(name = "whis")]
@@ -34,6 +33,17 @@ enum Commands {
 
     /// Check service status
     Status,
+
+    /// Configure settings (API key, etc.)
+    Config {
+        /// Set your OpenAI API key
+        #[arg(long)]
+        api_key: Option<String>,
+
+        /// Show current configuration
+        #[arg(long)]
+        show: bool,
+    },
 }
 
 #[tokio::main]
@@ -44,6 +54,7 @@ async fn main() -> Result<()> {
         Some(Commands::Listen { hotkey }) => run_listen(hotkey).await,
         Some(Commands::Stop) => run_stop(),
         Some(Commands::Status) => run_status(),
+        Some(Commands::Config { api_key, show }) => run_config(api_key, show),
         None => run_record_once().await,
     }
 }
@@ -145,7 +156,7 @@ async fn run_record_once() -> Result<()> {
     let config = load_config()?;
 
     // Create recorder and start recording
-    let mut recorder = audio::AudioRecorder::new()?;
+    let mut recorder = AudioRecorder::new()?;
     recorder.start_recording()?;
 
     print!("Recording... (press Enter to stop)");
@@ -157,12 +168,12 @@ async fn run_record_once() -> Result<()> {
 
     // Transcribe based on result type
     let transcription = match audio_result {
-        audio::AudioResult::Single(audio_data) => {
+        AudioResult::Single(audio_data) => {
             // Small file - simple transcription
             print!("\rTranscribing...                        \n");
             io::stdout().flush()?;
 
-            match transcribe::transcribe_audio(&config.openai_api_key, audio_data) {
+            match transcribe_audio(&config.openai_api_key, audio_data) {
                 Ok(text) => text,
                 Err(e) => {
                     eprintln!("Transcription error: {e}");
@@ -170,12 +181,12 @@ async fn run_record_once() -> Result<()> {
                 }
             }
         }
-        audio::AudioResult::Chunked(chunks) => {
+        AudioResult::Chunked(chunks) => {
             // Large file - parallel transcription
             print!("\rTranscribing...                        \n");
             io::stdout().flush()?;
 
-            match transcribe::parallel_transcribe(&config.openai_api_key, chunks, None).await {
+            match parallel_transcribe(&config.openai_api_key, chunks, None).await {
                 Ok(text) => text,
                 Err(e) => {
                     eprintln!("Transcription error: {e}");
@@ -186,7 +197,7 @@ async fn run_record_once() -> Result<()> {
     };
 
     // Copy to clipboard
-    clipboard::copy_to_clipboard(&transcription)?;
+    copy_to_clipboard(&transcription)?;
 
     println!("Copied to clipboard");
 
@@ -210,16 +221,67 @@ fn check_ffmpeg() -> Result<()> {
     Ok(())
 }
 
-fn load_config() -> Result<config::Config> {
-    match config::Config::from_env() {
+fn load_config() -> Result<Config> {
+    use whis_core::Settings;
+
+    // Priority: settings file > environment variable
+    let settings = Settings::load();
+    if let Some(key) = settings.openai_api_key {
+        return Ok(Config { openai_api_key: key });
+    }
+
+    // Fallback to environment
+    match Config::from_env() {
         Ok(cfg) => Ok(cfg),
-        Err(e) => {
-            eprintln!("Error loading configuration: {e}");
-            eprintln!("\nPlease create a .env file with your OpenAI API key:");
-            eprintln!("  OPENAI_API_KEY=your-api-key-here\n");
+        Err(_) => {
+            eprintln!("Error: No API key configured.");
+            eprintln!("\nSet your key with:");
+            eprintln!("  whis config --api-key YOUR_KEY\n");
+            eprintln!("Or set the OPENAI_API_KEY environment variable.");
             std::process::exit(1);
         }
     }
+}
+
+/// Configure settings
+fn run_config(api_key: Option<String>, show: bool) -> Result<()> {
+    use whis_core::Settings;
+
+    if let Some(key) = api_key {
+        // Validate format
+        if !key.starts_with("sk-") {
+            eprintln!("Invalid key format. OpenAI keys start with 'sk-'");
+            std::process::exit(1);
+        }
+
+        let mut settings = Settings::load();
+        settings.openai_api_key = Some(key);
+        settings.save()?;
+        println!("API key saved to {}", Settings::path().display());
+        return Ok(());
+    }
+
+    if show {
+        let settings = Settings::load();
+        println!("Config file: {}", Settings::path().display());
+        println!("Shortcut: {}", settings.shortcut);
+        if let Some(key) = &settings.openai_api_key {
+            let masked = if key.len() > 10 {
+                format!("{}...{}", &key[..6], &key[key.len() - 4..])
+            } else {
+                "***".to_string()
+            };
+            println!("API key: {}", masked);
+        } else {
+            println!("API key: (not set, using $OPENAI_API_KEY)");
+        }
+        return Ok(());
+    }
+
+    // No flags - show help
+    eprintln!("Usage: whis config --api-key <KEY>");
+    eprintln!("       whis config --show");
+    std::process::exit(1);
 }
 
 fn wait_for_enter() -> Result<()> {
