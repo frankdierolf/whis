@@ -28,3 +28,6 @@ gen/
 flatpak-build/
 build-dir/
 *.flatpak
+
+# Local release docs (contains machine-specific paths)
+RELEASING.md
