@@ -186,8 +186,8 @@ function stopRecording() {
         </div>
       </template>
 
-      <!-- CLI Fallback (Wayland without portal support) -->
-      <template v-else-if="backendInfo?.backend === 'CLIFallback'">
+      <!-- Manual Setup (Wayland without portal support) -->
+      <template v-else-if="backendInfo?.backend === 'ManualSetup'">
         <div class="notice warning">
           <span class="notice-marker">[!]</span>
           <p>Global shortcuts require manual configuration on {{ backendInfo.compositor }}.</p>
@@ -451,7 +451,7 @@ function stopRecording() {
   color: var(--text);
 }
 
-/* CLI Fallback instructions */
+/* Manual Setup instructions */
 .notice.warning {
   border-color: var(--warning, #f59e0b);
 }

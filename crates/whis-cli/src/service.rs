@@ -7,30 +7,30 @@ use tokio::time::sleep;
 use crate::ipc::{IpcMessage, IpcResponse, IpcServer};
 use std::time::Duration;
 use whis_core::{
-    AudioRecorder, AudioResult, Config, copy_to_clipboard, parallel_transcribe, transcribe_audio,
+    AudioRecorder, RecordingOutput, ApiConfig, copy_to_clipboard, parallel_transcribe, transcribe_audio,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum ServiceState {
     Idle,
     Recording,
-    Processing,
+    Transcribing,
 }
 
 pub struct Service {
     state: Arc<Mutex<ServiceState>>,
     recorder: Arc<Mutex<Option<AudioRecorder>>>,
-    config: Config,
-    counter: Arc<Mutex<u32>>,
+    config: ApiConfig,
+    recording_counter: Arc<Mutex<u32>>,
 }
 
 impl Service {
-    pub fn new(config: Config) -> Result<Self> {
+    pub fn new(config: ApiConfig) -> Result<Self> {
         Ok(Self {
             state: Arc::new(Mutex::new(ServiceState::Idle)),
             recorder: Arc::new(Mutex::new(None)),
             config,
-            counter: Arc::new(Mutex::new(0)),
+            recording_counter: Arc::new(Mutex::new(0)),
         })
     }
 
@@ -78,14 +78,14 @@ impl Service {
                     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
                     std::process::exit(0);
                 });
-                IpcResponse::Ok
+                IpcResponse::Success
             }
             IpcMessage::Status => {
                 let state = *self.state.lock().unwrap();
                 match state {
                     ServiceState::Idle => IpcResponse::Idle,
                     ServiceState::Recording => IpcResponse::Recording,
-                    ServiceState::Processing => IpcResponse::Processing,
+                    ServiceState::Transcribing => IpcResponse::Transcribing,
                 }
             }
         }
@@ -97,9 +97,9 @@ impl Service {
 
         match current_state {
             ServiceState::Idle => {
-                // Increment counter and start recording
+                // Increment recording counter and start recording
                 let count = {
-                    let mut c = self.counter.lock().unwrap();
+                    let mut c = self.recording_counter.lock().unwrap();
                     *c += 1;
                     *c
                 };
@@ -116,19 +116,19 @@ impl Service {
                 }
             }
             ServiceState::Recording => {
-                // Stop recording and process
-                *self.state.lock().unwrap() = ServiceState::Processing;
-                let count = *self.counter.lock().unwrap();
+                // Stop recording and transcribe
+                *self.state.lock().unwrap() = ServiceState::Transcribing;
+                let count = *self.recording_counter.lock().unwrap();
 
-                // Show processing state (overwrite recording line)
-                print!("\r#{count} processing...");
+                // Show transcribing state (overwrite recording line)
+                print!("\r#{count} transcribing...");
                 let _ = std::io::stdout().flush();
 
                 match self.stop_and_transcribe().await {
                     Ok(_) => {
                         *self.state.lock().unwrap() = ServiceState::Idle;
                         println!("\r#{count} done            ");
-                        IpcResponse::Ok
+                        IpcResponse::Success
                     }
                     Err(e) => {
                         *self.state.lock().unwrap() = ServiceState::Idle;
@@ -137,9 +137,9 @@ impl Service {
                     }
                 }
             }
-            ServiceState::Processing => {
-                // Already processing, ignore
-                IpcResponse::Processing
+            ServiceState::Transcribing => {
+                // Already transcribing, ignore
+                IpcResponse::Transcribing
             }
         }
     }
@@ -165,21 +165,21 @@ impl Service {
             .take()
             .context("No active recording")?;
 
-        // Stop and save audio (blocking operation, run in tokio blocking task)
-        let audio_result = tokio::task::spawn_blocking(move || recorder.stop_and_save())
+        // Finalize recording (blocking operation, run in tokio blocking task)
+        let audio_result = tokio::task::spawn_blocking(move || recorder.finalize_recording())
             .await
             .context("Failed to join task")??;
 
-        // Transcribe based on result type
+        // Transcribe based on output type
         let api_key = self.config.openai_api_key.clone();
         let transcription = match audio_result {
-            AudioResult::Single(audio_data) => {
+            RecordingOutput::Single(audio_data) => {
                 // Small file - use simple blocking transcription
                 tokio::task::spawn_blocking(move || transcribe_audio(&api_key, audio_data))
                     .await
                     .context("Failed to join task")??
             }
-            AudioResult::Chunked(chunks) => {
+            RecordingOutput::Chunked(chunks) => {
                 // Large file - use parallel async transcription
                 parallel_transcribe(&api_key, chunks, None).await?
             }

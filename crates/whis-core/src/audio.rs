@@ -20,8 +20,8 @@ pub struct AudioChunk {
     pub has_leading_overlap: bool,
 }
 
-/// Result of stopping a recording - either a single file or multiple chunks
-pub enum AudioResult {
+/// Output of a completed recording - either a single file or multiple chunks
+pub enum RecordingOutput {
     /// Small file that can be transcribed directly
     Single(Vec<u8>),
     /// Large file split into chunks for parallel transcription
@@ -109,7 +109,7 @@ impl AudioRecorder {
         Ok(stream)
     }
 
-    pub fn stop_and_save(&mut self) -> Result<AudioResult> {
+    pub fn finalize_recording(&mut self) -> Result<RecordingOutput> {
         // Drop the stream first to release the microphone
         self.stream = None;
 
@@ -128,7 +128,7 @@ impl AudioRecorder {
 
         // If at or under threshold, return as single file (fast path)
         if mp3_data.len() <= CHUNK_THRESHOLD_BYTES {
-            return Ok(AudioResult::Single(mp3_data));
+            return Ok(RecordingOutput::Single(mp3_data));
         }
 
         // File is too large - need to chunk it
@@ -164,7 +164,7 @@ impl AudioRecorder {
             chunk_start = chunk_end.saturating_sub(overlap_samples);
         }
 
-        Ok(AudioResult::Chunked(chunks))
+        Ok(RecordingOutput::Chunked(chunks))
     }
 
     /// Convert raw f32 samples to MP3 data

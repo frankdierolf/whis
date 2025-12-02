@@ -11,8 +11,8 @@ pub enum ShortcutBackend {
     TauriPlugin,
     /// XDG Portal GlobalShortcuts - works on Wayland with GNOME 48+, KDE, Hyprland
     PortalGlobalShortcuts,
-    /// CLI fallback - user configures compositor to run `whis-desktop --toggle`
-    CLIFallback,
+    /// Manual setup - user configures compositor to run `whis-desktop --toggle`
+    ManualSetup,
 }
 
 /// Information about shortcut capability on current system
@@ -31,7 +31,7 @@ pub struct ShortcutBackendInfo {
 }
 
 /// Get the GlobalShortcuts portal version (0 if unavailable)
-pub fn get_portal_version() -> u32 {
+pub fn portal_version() -> u32 {
     std::process::Command::new("busctl")
         .args([
             "--user",
@@ -52,10 +52,10 @@ pub fn get_portal_version() -> u32 {
 }
 
 /// Get backend info for the frontend
-pub fn get_backend_info() -> ShortcutBackendInfo {
+pub fn backend_info() -> ShortcutBackendInfo {
     let capability = detect_backend();
     let portal_version = if capability.backend == ShortcutBackend::PortalGlobalShortcuts {
-        get_portal_version()
+        portal_version()
     } else {
         0
     };
@@ -75,14 +75,14 @@ pub fn detect_backend() -> ShortcutCapability {
 
     // Check if running on Wayland
     if session_type == "wayland" || wayland_display {
-        if check_portal_available() {
+        if is_portal_available() {
             ShortcutCapability {
                 backend: ShortcutBackend::PortalGlobalShortcuts,
                 compositor: detect_compositor(),
             }
         } else {
             ShortcutCapability {
-                backend: ShortcutBackend::CLIFallback,
+                backend: ShortcutBackend::ManualSetup,
                 compositor: detect_compositor(),
             }
         }
@@ -96,7 +96,7 @@ pub fn detect_backend() -> ShortcutCapability {
 }
 
 /// Check if GlobalShortcuts portal is available via D-Bus
-fn check_portal_available() -> bool {
+fn is_portal_available() -> bool {
     std::process::Command::new("busctl")
         .args([
             "--user",
@@ -146,7 +146,7 @@ pub async fn register_app_with_portal() -> Result<(), Box<dyn std::error::Error 
         }
         Err(e) => {
             // Registry might not be available (older portals), continue anyway
-            println!("Portal Registry registration failed (may be unavailable): {}", e);
+            println!("Portal Registry registration failed (may be unavailable): {e}");
             // Don't return error - this is optional for newer portals
             Ok(())
         }
@@ -214,12 +214,12 @@ where
     // IMPORTANT: Register app_id with portal BEFORE making any portal calls
     // This is required for native apps to have a valid app_id for GlobalShortcuts
     if let Err(e) = register_app_with_portal().await {
-        eprintln!("Warning: Portal registration failed: {}", e);
+        eprintln!("Warning: Portal registration failed: {e}");
     }
 
     // Try to read existing shortcut from dconf first (works even if portal bind fails)
     if let Some(existing) = read_portal_shortcut_from_dconf() {
-        println!("Found existing portal shortcut in dconf: {}", existing);
+        println!("Found existing portal shortcut in dconf: {existing}");
         let state = app_handle.state::<crate::state::AppState>();
         *state.portal_shortcut.lock().unwrap() = Some(existing);
     }
@@ -233,7 +233,7 @@ where
             let existing = list_response.shortcuts();
             if let Some(s) = existing.iter().find(|s| s.id() == "toggle-recording") {
                 let trigger = s.trigger_description().to_string();
-                println!("Found existing portal shortcut in session: {}", trigger);
+                println!("Found existing portal shortcut in session: {trigger}");
                 let state = app_handle.state::<crate::state::AppState>();
                 *state.portal_shortcut.lock().unwrap() = Some(trigger);
                 // Skip binding, just listen for activations
@@ -266,7 +266,7 @@ where
                     {
                         let trigger = bound.trigger_description().to_string();
                         if !trigger.is_empty() {
-                            println!("Portal bound shortcut: {}", trigger);
+                            println!("Portal bound shortcut: {trigger}");
                             let state = app_handle.state::<crate::state::AppState>();
                             *state.portal_shortcut.lock().unwrap() = Some(trigger);
                         }
@@ -317,11 +317,11 @@ pub async fn bind_shortcut_with_trigger(
     // IMPORTANT: Register app_id with portal BEFORE making any portal calls
     // This is required for native apps to have a valid app_id for GlobalShortcuts
     if let Err(e) = register_app_with_portal().await {
-        eprintln!("Warning: Portal registration failed: {}", e);
+        eprintln!("Warning: Portal registration failed: {e}");
     }
 
-    let version = get_portal_version();
-    println!("Portal GlobalShortcuts version: {}", version);
+    let version = portal_version();
+    println!("Portal GlobalShortcuts version: {version}");
 
     let shortcuts = GlobalShortcuts::new().await?;
     let session = shortcuts.create_session().await?;
@@ -334,7 +334,7 @@ pub async fn bind_shortcut_with_trigger(
                 println!("Found {} existing shortcut(s) in session", existing.len());
                 if let Some(s) = existing.iter().find(|s| s.id() == "toggle-recording") {
                     let trigger = s.trigger_description().to_string();
-                    println!("Using existing shortcut: {}", trigger);
+                    println!("Using existing shortcut: {trigger}");
                     let state = app_handle.state::<crate::state::AppState>();
                     *state.portal_shortcut.lock().unwrap() = Some(trigger.clone());
                     return Ok(Some(trigger));
@@ -348,7 +348,7 @@ pub async fn bind_shortcut_with_trigger(
     if let Some(trigger) = preferred_trigger {
         // Convert from Tauri format (Ctrl+Shift+R) to XDG format (<Control><Shift>r)
         let xdg_trigger = convert_to_xdg_format(trigger);
-        println!("Requesting preferred trigger: {} (XDG: {})", trigger, xdg_trigger);
+        println!("Requesting preferred trigger: {trigger} (XDG: {xdg_trigger})");
         shortcut = shortcut.preferred_trigger(Some(xdg_trigger.as_str()));
     }
 
@@ -385,7 +385,7 @@ pub async fn bind_shortcut_with_trigger(
                                 if let Some(ref t) = updated_trigger {
                                     let state = app_handle.state::<crate::state::AppState>();
                                     *state.portal_shortcut.lock().unwrap() = Some(t.clone());
-                                    println!("Portal shortcut configured to: {}", t);
+                                    println!("Portal shortcut configured to: {t}");
                                     return Ok(updated_trigger);
                                 }
                             }
@@ -396,18 +396,18 @@ pub async fn bind_shortcut_with_trigger(
                     if let Some(ref t) = trigger {
                         let state = app_handle.state::<crate::state::AppState>();
                         *state.portal_shortcut.lock().unwrap() = Some(t.clone());
-                        println!("Portal shortcut bound to: {}", t);
+                        println!("Portal shortcut bound to: {t}");
                     }
 
                     Ok(trigger)
                 }
                 Err(e) => {
-                    Err(format!("Portal bind failed: {}. The shortcut may conflict with an existing binding.", e).into())
+                    Err(format!("Portal bind failed: {e}. The shortcut may conflict with an existing binding.").into())
                 }
             }
         }
         Err(e) => {
-            Err(format!("Portal request failed: {}", e).into())
+            Err(format!("Portal request failed: {e}").into())
         }
     }
 }
@@ -444,7 +444,7 @@ pub fn setup_tauri_shortcut(app: &tauri::App, shortcut_str: &str) -> Result<(), 
     let app_handle = app.handle().clone();
     
     // Attempt to parse the shortcut
-    let shortcut = Shortcut::from_str(shortcut_str).map_err(|e| format!("Invalid shortcut: {}", e))?;
+    let shortcut = Shortcut::from_str(shortcut_str).map_err(|e| format!("Invalid shortcut: {e}"))?;
 
     // Initialize plugin with generic handler
     app.handle().plugin(
@@ -463,7 +463,7 @@ pub fn setup_tauri_shortcut(app: &tauri::App, shortcut_str: &str) -> Result<(), 
 
     // Register the shortcut
     app.global_shortcut().register(shortcut)?;
-    println!("Tauri global shortcut registered: {}", shortcut_str);
+    println!("Tauri global shortcut registered: {shortcut_str}");
 
     Ok(())
 }
@@ -485,8 +485,8 @@ pub fn setup_shortcuts(app: &tauri::App) {
         ShortcutBackend::TauriPlugin => {
             if let Err(e) = setup_tauri_shortcut(app, &shortcut_str) {
                 eprintln!("Failed to setup Tauri shortcut: {e}");
-                eprintln!("Falling back to CLI mode");
-                print_cli_instructions(&capability.compositor, &shortcut_str);
+                eprintln!("Falling back to manual setup mode");
+                print_manual_setup_instructions(&capability.compositor, &shortcut_str);
             }
         }
         ShortcutBackend::PortalGlobalShortcuts => {
@@ -511,8 +511,8 @@ pub fn setup_shortcuts(app: &tauri::App) {
                 }
             });
         }
-        ShortcutBackend::CLIFallback => {
-            print_cli_instructions(&capability.compositor, &shortcut_str);
+        ShortcutBackend::ManualSetup => {
+            print_manual_setup_instructions(&capability.compositor, &shortcut_str);
         }
     }
 }
@@ -527,9 +527,9 @@ pub fn update_shortcut(app: &AppHandle, new_shortcut: &str) -> Result<bool, Box<
             app.global_shortcut().unregister_all()?;
 
             // Parse and register new one
-            let shortcut = Shortcut::from_str(new_shortcut).map_err(|e| format!("Invalid shortcut: {}", e))?;
+            let shortcut = Shortcut::from_str(new_shortcut).map_err(|e| format!("Invalid shortcut: {e}"))?;
             app.global_shortcut().register(shortcut)?;
-            println!("Updated Tauri global shortcut to: {}", new_shortcut);
+            println!("Updated Tauri global shortcut to: {new_shortcut}");
             Ok(false) // No restart needed
         },
         _ => {
@@ -541,7 +541,7 @@ pub fn update_shortcut(app: &AppHandle, new_shortcut: &str) -> Result<bool, Box<
 }
 
 
-fn print_cli_instructions(compositor: &str, shortcut: &str) {
+fn print_manual_setup_instructions(compositor: &str, shortcut: &str) {
     println!();
     println!("=== Global Shortcuts Not Available ===");
     println!("Compositor: {compositor}");
@@ -553,7 +553,7 @@ fn print_cli_instructions(compositor: &str, shortcut: &str) {
             println!("GNOME: Settings → Keyboard → Custom Shortcuts");
             println!("  Name: Whis Toggle Recording");
             println!("  Command: whis-desktop --toggle");
-            println!("  Shortcut: {}", shortcut);
+            println!("  Shortcut: {shortcut}");
         }
         s if s.contains("kde") || s.contains("plasma") => {
             println!("KDE: System Settings → Shortcuts → Custom Shortcuts");
@@ -561,7 +561,7 @@ fn print_cli_instructions(compositor: &str, shortcut: &str) {
         }
         s if s.contains("sway") => {
             println!("Sway: Add to ~/.config/sway/config:");
-            println!("  bindsym {} exec whis-desktop --toggle", shortcut.to_lowercase().replace("+", "+"));
+            println!("  bindsym {} exec whis-desktop --toggle", shortcut.to_lowercase());
         }
         s if s.contains("hyprland") => {
             println!("Hyprland: Add to ~/.config/hypr/hyprland.conf:");
@@ -579,7 +579,7 @@ pub fn send_toggle_command() -> Result<(), Box<dyn std::error::Error>> {
     use std::io::Write;
     use std::os::unix::net::UnixStream;
 
-    let socket_path = get_socket_path();
+    let socket_path = socket_path();
 
     match UnixStream::connect(&socket_path) {
         Ok(mut stream) => {
@@ -597,7 +597,7 @@ pub fn send_toggle_command() -> Result<(), Box<dyn std::error::Error>> {
 
 /// Start listening for IPC commands
 pub fn start_ipc_listener(app_handle: AppHandle) {
-    let socket_path = get_socket_path();
+    let socket_path = socket_path();
 
     // Remove old socket if exists
     let _ = std::fs::remove_file(&socket_path);
@@ -638,7 +638,7 @@ pub fn start_ipc_listener(app_handle: AppHandle) {
     });
 }
 
-fn get_socket_path() -> String {
+fn socket_path() -> String {
     let runtime_dir = env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".into());
     format!("{runtime_dir}/whis-desktop.sock")
 }

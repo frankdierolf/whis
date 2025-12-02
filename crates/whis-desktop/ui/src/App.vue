@@ -60,7 +60,7 @@ async function closeWindow() {
 onMounted(async () => {
   // Get backend info first
   try {
-    backendInfo.value = await invoke<BackendInfo>('get_shortcut_backend');
+    backendInfo.value = await invoke<BackendInfo>('shortcut_backend');
   } catch (e) {
     console.error('Failed to get backend info:', e);
   }
@@ -73,7 +73,7 @@ onMounted(async () => {
   // For portal backend, fetch actual binding
   if (backendInfo.value?.backend === 'PortalGlobalShortcuts') {
     try {
-      portalShortcut.value = await invoke<string | null>('get_portal_shortcut');
+      portalShortcut.value = await invoke<string | null>('portal_shortcut');
     } catch (e) {
       console.error('Failed to get portal shortcut:', e);
     }

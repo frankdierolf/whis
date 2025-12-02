@@ -2,7 +2,7 @@ use crate::settings::Settings;
 use crate::shortcuts::ShortcutBackendInfo;
 use crate::state::{AppState, RecordingState};
 use tauri::{AppHandle, State};
-use whis_core::Config;
+use whis_core::ApiConfig;
 
 #[derive(serde::Serialize)]
 pub struct StatusResponse {
@@ -16,20 +16,20 @@ pub struct SaveSettingsResponse {
 }
 
 #[tauri::command]
-pub async fn check_config() -> Result<bool, String> {
-    Config::from_env().map(|_| true).map_err(|e| e.to_string())
+pub async fn is_api_configured() -> Result<bool, String> {
+    ApiConfig::from_env().map(|_| true).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn get_status(state: State<'_, AppState>) -> Result<StatusResponse, String> {
     let current_state = *state.state.lock().unwrap();
-    let config_valid = state.config.lock().unwrap().is_some();
+    let config_valid = state.api_config.lock().unwrap().is_some();
 
     Ok(StatusResponse {
         state: match current_state {
             RecordingState::Idle => "idle".to_string(),
             RecordingState::Recording => "recording".to_string(),
-            RecordingState::Processing => "processing".to_string(),
+            RecordingState::Transcribing => "transcribing".to_string(),
         },
         config_valid,
     })
@@ -44,8 +44,8 @@ pub async fn get_settings(state: State<'_, AppState>) -> Result<Settings, String
 }
 
 #[tauri::command]
-pub fn get_shortcut_backend() -> ShortcutBackendInfo {
-    crate::shortcuts::get_backend_info()
+pub fn shortcut_backend() -> ShortcutBackendInfo {
+    crate::shortcuts::backend_info()
 }
 
 #[tauri::command]
@@ -68,7 +68,7 @@ pub async fn configure_shortcut_with_trigger(
 }
 
 #[tauri::command]
-pub fn get_portal_shortcut(state: State<'_, AppState>) -> Result<Option<String>, String> {
+pub fn portal_shortcut(state: State<'_, AppState>) -> Result<Option<String>, String> {
     // First check if we have it cached in state
     let cached = state.portal_shortcut.lock().unwrap().clone();
     if cached.is_some() {
@@ -100,9 +100,9 @@ pub async fn save_settings(
         state_settings.save().map_err(|e| e.to_string())?;
     }
 
-    // Clear cached config if API key changed
+    // Clear cached API config if API key changed
     if api_key_changed {
-        *state.config.lock().unwrap() = None;
+        *state.api_config.lock().unwrap() = None;
     }
 
     // Only update shortcut if it actually changed

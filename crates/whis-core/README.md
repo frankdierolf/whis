@@ -24,17 +24,19 @@
 ## Usage
 
 ```rust
-use whis_core::{AudioRecorder, Config, transcribe_audio, copy_to_clipboard};
+use whis_core::{AudioRecorder, ApiConfig, transcribe_audio, copy_to_clipboard};
 
-// Load config (includes API key)
-let config = Config::load()?;
+// Load config from environment (OPENAI_API_KEY)
+let config = ApiConfig::from_env()?;
 
 // Record audio
-let recorder = AudioRecorder::new()?;
-let audio = recorder.record_until_stopped()?;
+let mut recorder = AudioRecorder::new()?;
+recorder.start_recording()?;
+// ... wait for user input ...
+let output = recorder.finalize_recording()?;
 
-// Transcribe
-let text = transcribe_audio(&config.api_key, &audio).await?;
+// Transcribe (for single chunk)
+let text = transcribe_audio(&config.openai_api_key, audio_data)?;
 
 // Copy to clipboard
 copy_to_clipboard(&text)?;

@@ -6,13 +6,13 @@ use tauri::{
     AppHandle, Manager, WebviewWindowBuilder, WebviewUrl,
 };
 use whis_core::{
-    copy_to_clipboard, parallel_transcribe, transcribe_audio, AudioRecorder, AudioResult, Config,
+    copy_to_clipboard, parallel_transcribe, transcribe_audio, AudioRecorder, RecordingOutput, ApiConfig,
 };
 
 // Static icons for each state (pre-loaded at compile time)
 const ICON_IDLE: &[u8] = include_bytes!("../icons/icon-idle.png");
 const ICON_RECORDING: &[u8] = include_bytes!("../icons/icon-recording.png");
-const ICON_PROCESSING: &[u8] = include_bytes!("../icons/icon-processing.png");
+const ICON_TRANSCRIBING: &[u8] = include_bytes!("../icons/icon-processing.png");
 
 pub const TRAY_ID: &str = "whis-tray";
 
@@ -132,16 +132,16 @@ fn toggle_recording(app: AppHandle) {
                 }
             });
         }
-        RecordingState::Processing => {
-            // Already processing, ignore
+        RecordingState::Transcribing => {
+            // Already transcribing, ignore
         }
     }
 }
 
 fn start_recording_sync(app: &AppHandle, state: &AppState) -> Result<(), String> {
-    // Load config if not already loaded
+    // Load API config if not already loaded
     {
-        let mut config_guard = state.config.lock().unwrap();
+        let mut config_guard = state.api_config.lock().unwrap();
         if config_guard.is_none() {
             // Try settings first, then environment variable
             let api_key = {
@@ -154,7 +154,7 @@ fn start_recording_sync(app: &AppHandle, state: &AppState) -> Result<(), String>
                 "No API key configured. Add it in Settings > API Keys.",
             )?;
 
-            *config_guard = Some(Config { openai_api_key: api_key });
+            *config_guard = Some(ApiConfig { openai_api_key: api_key });
         }
     }
 
@@ -175,12 +175,12 @@ fn start_recording_sync(app: &AppHandle, state: &AppState) -> Result<(), String>
 async fn stop_and_transcribe(app: &AppHandle) -> Result<(), String> {
     let state = app.state::<AppState>();
 
-    // Update state to processing
+    // Update state to transcribing
     {
-        *state.state.lock().unwrap() = RecordingState::Processing;
+        *state.state.lock().unwrap() = RecordingState::Transcribing;
     }
-    update_tray(app, RecordingState::Processing);
-    println!("Processing...");
+    update_tray(app, RecordingState::Transcribing);
+    println!("Transcribing...");
 
     // Get recorder and config
     let mut recorder = state
@@ -191,24 +191,24 @@ async fn stop_and_transcribe(app: &AppHandle) -> Result<(), String> {
         .ok_or("No active recording")?;
 
     let api_key = state
-        .config
+        .api_config
         .lock()
         .unwrap()
         .as_ref()
-        .ok_or("Config not loaded")?
+        .ok_or("API config not loaded")?
         .openai_api_key
         .clone();
 
-    // Stop recording (synchronous file saving)
-    // Note: AudioRecorder might need to be Send to be moved into async block? 
+    // Finalize recording (synchronous file encoding)
+    // Note: AudioRecorder might need to be Send to be moved into async block?
     // It is likely Send since it's in a Mutex.
-    let audio_result = recorder.stop_and_save().map_err(|e| e.to_string())?;
+    let audio_result = recorder.finalize_recording().map_err(|e| e.to_string())?;
 
     // Transcribe
     let transcription = match audio_result {
         // transcribe_audio is synchronous (blocking HTTP), so we should wrap it in spawn_blocking
         // to avoid blocking the async runtime
-        AudioResult::Single(data) => {
+        RecordingOutput::Single(data) => {
             let api_key = api_key.clone();
             tauri::async_runtime::spawn_blocking(move || {
                 transcribe_audio(&api_key, data)
@@ -217,7 +217,7 @@ async fn stop_and_transcribe(app: &AppHandle) -> Result<(), String> {
             .map_err(|e| e.to_string())?
             .map_err(|e| e.to_string())?
         },
-        AudioResult::Chunked(chunks) => {
+        RecordingOutput::Chunked(chunks) => {
             // parallel_transcribe is async, so we can await it directly
             parallel_transcribe(&api_key, chunks, None)
                 .await
@@ -246,10 +246,10 @@ fn update_tray(app: &AppHandle, new_state: RecordingState) {
         let text = match new_state {
             RecordingState::Idle => "Start Recording",
             RecordingState::Recording => "Stop Recording",
-            RecordingState::Processing => "Processing...",
+            RecordingState::Transcribing => "Transcribing...",
         };
         let _ = menu_item.set_text(text);
-        let _ = menu_item.set_enabled(new_state != RecordingState::Processing);
+        let _ = menu_item.set_enabled(new_state != RecordingState::Transcribing);
     }
 
     if let Some(tray) = app.tray_by_id(TRAY_ID) {
@@ -257,7 +257,7 @@ fn update_tray(app: &AppHandle, new_state: RecordingState) {
         let tooltip = match new_state {
             RecordingState::Idle => "Whis - Click to record",
             RecordingState::Recording => "Whis - Recording... Click to stop",
-            RecordingState::Processing => "Whis - Processing...",
+            RecordingState::Transcribing => "Whis - Transcribing...",
         };
         let _ = tray.set_tooltip(Some(tooltip));
 
@@ -265,7 +265,7 @@ fn update_tray(app: &AppHandle, new_state: RecordingState) {
         let icon = match new_state {
             RecordingState::Idle => ICON_IDLE,
             RecordingState::Recording => ICON_RECORDING,
-            RecordingState::Processing => ICON_PROCESSING,
+            RecordingState::Transcribing => ICON_TRANSCRIBING,
         };
         set_tray_icon(&tray, icon);
     }

@@ -12,22 +12,22 @@ pub enum IpcMessage {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum IpcResponse {
-    Ok,
+    Success,
     Recording,
     Idle,
-    Processing,
+    Transcribing,
     Error(String),
 }
 
 /// Get the socket path for IPC communication
-pub fn get_socket_path() -> PathBuf {
+pub fn socket_path() -> PathBuf {
     // Use XDG_RUNTIME_DIR if available, otherwise fall back to /tmp
     let runtime_dir = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".to_string());
     PathBuf::from(runtime_dir).join("whis.sock")
 }
 
 /// Get the PID file path
-pub fn get_pid_path() -> PathBuf {
+pub fn pid_file_path() -> PathBuf {
     let runtime_dir = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".to_string());
     PathBuf::from(runtime_dir).join("whis.pid")
 }
@@ -39,7 +39,7 @@ pub struct IpcServer {
 
 impl IpcServer {
     pub fn new() -> Result<Self> {
-        let socket_path = get_socket_path();
+        let socket_path = socket_path();
 
         // Remove old socket if it exists
         if socket_path.exists() {
@@ -68,8 +68,8 @@ impl IpcServer {
 
 impl Drop for IpcServer {
     fn drop(&mut self) {
-        let socket_path = get_socket_path();
-        let _ = std::fs::remove_file(socket_path);
+        let path = socket_path();
+        let _ = std::fs::remove_file(path);
     }
 }
 
@@ -106,16 +106,16 @@ pub struct IpcClient {
 
 impl IpcClient {
     pub fn connect() -> Result<Self> {
-        let socket_path = get_socket_path();
+        let path = socket_path();
 
-        if !socket_path.exists() {
+        if !path.exists() {
             anyhow::bail!(
                 "whis service is not running.\n\
                 Start it with: whis listen"
             );
         }
 
-        let stream = UnixStream::connect(&socket_path).with_context(|| {
+        let stream = UnixStream::connect(&path).with_context(|| {
             // If socket exists but connection fails, it's likely stale
             "Failed to connect to whis service.\n\
                 The service may have crashed. Try removing stale files:\n\
@@ -145,14 +145,14 @@ impl IpcClient {
 
 /// Check if the service is already running
 pub fn is_service_running() -> bool {
-    let socket_path = get_socket_path();
+    let path = socket_path();
 
-    if !socket_path.exists() {
+    if !path.exists() {
         return false;
     }
 
     // Socket exists, but check if it's actually connectable
-    match UnixStream::connect(&socket_path) {
+    match UnixStream::connect(&path) {
         Ok(_) => {
             // Successfully connected, service is running
             true
@@ -160,7 +160,7 @@ pub fn is_service_running() -> bool {
         Err(_) => {
             // Socket exists but can't connect - it's stale
             // Clean up stale socket and PID files
-            let _ = std::fs::remove_file(&socket_path);
+            let _ = std::fs::remove_file(&path);
             remove_pid_file();
             false
         }
@@ -169,14 +169,14 @@ pub fn is_service_running() -> bool {
 
 /// Write PID file
 pub fn write_pid_file() -> Result<()> {
-    let pid_path = get_pid_path();
+    let path = pid_file_path();
     let pid = std::process::id();
-    std::fs::write(&pid_path, pid.to_string()).context("Failed to write PID file")?;
+    std::fs::write(&path, pid.to_string()).context("Failed to write PID file")?;
     Ok(())
 }
 
 /// Remove PID file
 pub fn remove_pid_file() {
-    let pid_path = get_pid_path();
-    let _ = std::fs::remove_file(pid_path);
+    let path = pid_file_path();
+    let _ = std::fs::remove_file(path);
 }

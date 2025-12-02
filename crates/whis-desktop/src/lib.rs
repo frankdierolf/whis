@@ -27,13 +27,13 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_status,
-            commands::check_config,
+            commands::is_api_configured,
             commands::get_settings,
             commands::save_settings,
-            commands::get_shortcut_backend,
+            commands::shortcut_backend,
             commands::configure_shortcut,
             commands::configure_shortcut_with_trigger,
-            commands::get_portal_shortcut,
+            commands::portal_shortcut,
             commands::validate_api_key,
         ])
         .run(tauri::generate_context!())

@@ -6,7 +6,7 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use std::io::{self, Write};
 use whis_core::{
-    AudioRecorder, AudioResult, Config, copy_to_clipboard, parallel_transcribe, transcribe_audio,
+    AudioRecorder, RecordingOutput, ApiConfig, copy_to_clipboard, parallel_transcribe, transcribe_audio,
 };
 
 #[derive(Parser)]
@@ -62,7 +62,7 @@ async fn main() -> Result<()> {
 /// Run the background service
 async fn run_listen(hotkey_str: String) -> Result<()> {
     // Check if FFmpeg is available
-    check_ffmpeg()?;
+    ensure_ffmpeg_installed()?;
 
     // Check if service is already running
     if ipc::is_service_running() {
@@ -74,8 +74,8 @@ async fn run_listen(hotkey_str: String) -> Result<()> {
     // Parse and validate hotkey
     let hotkey = hotkey::Hotkey::parse(&hotkey_str)?;
 
-    // Load configuration
-    let config = load_config()?;
+    // Load API configuration
+    let config = load_api_config()?;
 
     // Write PID file
     ipc::write_pid_file()?;
@@ -136,7 +136,7 @@ fn run_status() -> Result<()> {
     match response {
         ipc::IpcResponse::Idle => println!("Status: Running (idle)"),
         ipc::IpcResponse::Recording => println!("Status: Running (recording)"),
-        ipc::IpcResponse::Processing => println!("Status: Running (processing)"),
+        ipc::IpcResponse::Transcribing => println!("Status: Running (transcribing)"),
         ipc::IpcResponse::Error(e) => {
             eprintln!("Error: {e}");
             std::process::exit(1);
@@ -150,10 +150,10 @@ fn run_status() -> Result<()> {
 /// Run the original one-time recording mode
 async fn run_record_once() -> Result<()> {
     // Check if FFmpeg is available
-    check_ffmpeg()?;
+    ensure_ffmpeg_installed()?;
 
-    // Load configuration
-    let config = load_config()?;
+    // Load API configuration
+    let config = load_api_config()?;
 
     // Create recorder and start recording
     let mut recorder = AudioRecorder::new()?;
@@ -163,12 +163,12 @@ async fn run_record_once() -> Result<()> {
     io::stdout().flush()?;
     wait_for_enter()?;
 
-    // Stop recording and get audio result
-    let audio_result = recorder.stop_and_save()?;
+    // Finalize recording and get output
+    let audio_result = recorder.finalize_recording()?;
 
-    // Transcribe based on result type
+    // Transcribe based on output type
     let transcription = match audio_result {
-        AudioResult::Single(audio_data) => {
+        RecordingOutput::Single(audio_data) => {
             // Small file - simple transcription
             print!("\rTranscribing...                        \n");
             io::stdout().flush()?;
@@ -181,7 +181,7 @@ async fn run_record_once() -> Result<()> {
                 }
             }
         }
-        AudioResult::Chunked(chunks) => {
+        RecordingOutput::Chunked(chunks) => {
             // Large file - parallel transcription
             print!("\rTranscribing...                        \n");
             io::stdout().flush()?;
@@ -204,7 +204,7 @@ async fn run_record_once() -> Result<()> {
     Ok(())
 }
 
-fn check_ffmpeg() -> Result<()> {
+fn ensure_ffmpeg_installed() -> Result<()> {
     if std::process::Command::new("ffmpeg")
         .arg("-version")
         .output()
@@ -221,17 +221,17 @@ fn check_ffmpeg() -> Result<()> {
     Ok(())
 }
 
-fn load_config() -> Result<Config> {
+fn load_api_config() -> Result<ApiConfig> {
     use whis_core::Settings;
 
     // Priority: settings file > environment variable
     let settings = Settings::load();
     if let Some(key) = settings.openai_api_key {
-        return Ok(Config { openai_api_key: key });
+        return Ok(ApiConfig { openai_api_key: key });
     }
 
     // Fallback to environment
-    match Config::from_env() {
+    match ApiConfig::from_env() {
         Ok(cfg) => Ok(cfg),
         Err(_) => {
             eprintln!("Error: No API key configured.");
@@ -271,7 +271,7 @@ fn run_config(api_key: Option<String>, show: bool) -> Result<()> {
             } else {
                 "***".to_string()
             };
-            println!("API key: {}", masked);
+            println!("API key: {masked}");
         } else {
             println!("API key: (not set, using $OPENAI_API_KEY)");
         }
