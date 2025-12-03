@@ -18,6 +18,8 @@ pub struct AppState {
     pub settings: Mutex<Settings>,
     /// The actual shortcut binding from the XDG Portal (Wayland only)
     pub portal_shortcut: Mutex<Option<String>>,
+    /// Error message if portal shortcut binding failed
+    pub portal_bind_error: Mutex<Option<String>>,
 }
 
 impl AppState {
@@ -29,6 +31,7 @@ impl AppState {
             record_menu_item: Mutex::new(None),
             settings: Mutex::new(settings),
             portal_shortcut: Mutex::new(None),
+            portal_bind_error: Mutex::new(None),
         }
     }
 }

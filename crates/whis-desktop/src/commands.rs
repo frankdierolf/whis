@@ -23,16 +23,26 @@ pub async fn is_api_configured() -> Result<bool, String> {
 #[tauri::command]
 pub async fn get_status(state: State<'_, AppState>) -> Result<StatusResponse, String> {
     let current_state = *state.state.lock().unwrap();
-    let config_valid = state.api_config.lock().unwrap().is_some();
+
+    // Check if API key is configured (either in settings or already loaded)
+    let config_valid = state.api_config.lock().unwrap().is_some()
+        || state.settings.lock().unwrap().openai_api_key.is_some()
+        || std::env::var("OPENAI_API_KEY").is_ok();
 
     Ok(StatusResponse {
         state: match current_state {
-            RecordingState::Idle => "idle".to_string(),
-            RecordingState::Recording => "recording".to_string(),
-            RecordingState::Transcribing => "transcribing".to_string(),
+            RecordingState::Idle => "Idle".to_string(),
+            RecordingState::Recording => "Recording".to_string(),
+            RecordingState::Transcribing => "Transcribing".to_string(),
         },
         config_valid,
     })
+}
+
+#[tauri::command]
+pub async fn toggle_recording(app: AppHandle) -> Result<(), String> {
+    crate::tray::toggle_recording_public(app);
+    Ok(())
 }
 
 #[tauri::command]
@@ -128,4 +138,31 @@ pub fn validate_api_key(api_key: String) -> Result<bool, String> {
     }
 
     Ok(true)
+}
+
+/// Reset portal shortcuts by clearing dconf (GNOME)
+/// This allows rebinding after restart
+#[tauri::command]
+pub fn reset_shortcut() -> Result<(), String> {
+    std::process::Command::new("dconf")
+        .args(["reset", "-f", "/org/gnome/settings-daemon/global-shortcuts/"])
+        .status()
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Get any error from portal shortcut binding
+#[tauri::command]
+pub fn portal_bind_error(state: State<'_, AppState>) -> Option<String> {
+    state.portal_bind_error.lock().unwrap().clone()
+}
+
+/// Get the correct toggle command based on installation type
+#[tauri::command]
+pub fn get_toggle_command() -> String {
+    if std::path::Path::new("/.flatpak-info").exists() {
+        "flatpak run ink.whis.Whis --toggle".to_string()
+    } else {
+        "whis-desktop --toggle".to_string()
+    }
 }

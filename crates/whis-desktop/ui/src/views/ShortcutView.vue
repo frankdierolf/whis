@@ -1,5 +1,5 @@
 <script setup lang="ts" vapor>
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
 import { relaunch } from '@tauri-apps/plugin-process';
 
@@ -18,6 +18,7 @@ const props = defineProps<{
   backendInfo: BackendInfo | null;
   currentShortcut: string;
   portalShortcut: string | null;
+  portalBindError: string | null;
   apiKey: string;
 }>();
 
@@ -29,26 +30,62 @@ const emit = defineEmits<{
 const isRecording = ref(false);
 const status = ref("");
 const needsRestart = ref(false);
-const copied = ref(false);
-const resetCommand = "dconf reset -f /org/gnome/settings-daemon/global-shortcuts/";
+const toggleCommand = ref("whis-desktop --toggle");
+
+onMounted(async () => {
+  try {
+    toggleCommand.value = await invoke<string>('get_toggle_command');
+  } catch (e) {
+    console.error('Failed to get toggle command:', e);
+  }
+});
+
+// Parse portal shortcut format like "Press <Control><Alt>l" or "<Shift><Control>r"
+function parsePortalShortcut(portalStr: string): string[] {
+  // Remove "Press " prefix if present
+  const cleaned = portalStr.replace(/^Press\s+/i, '');
+
+  const keys: string[] = [];
+  // Extract modifiers in <brackets>
+  const matches = cleaned.matchAll(/<(\w+)>/g);
+  for (const match of matches) {
+    const mod = (match[1] ?? '').toLowerCase();
+    if (mod === 'control') keys.push('Ctrl');
+    else if (mod === 'shift') keys.push('Shift');
+    else if (mod === 'alt') keys.push('Alt');
+    else if (mod === 'super') keys.push('Super');
+    else if (mod) keys.push(mod.charAt(0).toUpperCase() + mod.slice(1));
+  }
+  // Get the final key (everything after last >)
+  const finalKey = cleaned.replace(/<\w+>/g, '').trim();
+  if (finalKey) {
+    keys.push(finalKey.toUpperCase());
+  }
+  return keys;
+}
 
 // Split shortcut into individual keys for display
 const shortcutKeys = computed(() => {
-  const binding = props.backendInfo?.backend === 'PortalGlobalShortcuts'
-    && props.portalShortcut
-    ? props.portalShortcut
-    : props.currentShortcut;
+  // For portal backend with bound shortcut, parse the portal format
+  if (props.backendInfo?.backend === 'PortalGlobalShortcuts' && props.portalShortcut) {
+    return parsePortalShortcut(props.portalShortcut);
+  }
 
-  if (binding === "Press keys...") {
+  // For other cases, split on '+'
+  if (props.currentShortcut === "Press keys...") {
     return ["..."];
   }
-  return binding.split('+');
+  return props.currentShortcut.split('+');
 });
 
-async function copyResetCommand() {
-  await navigator.clipboard.writeText(resetCommand);
-  copied.value = true;
-  setTimeout(() => copied.value = false, 1500);
+async function resetAndRestart() {
+  try {
+    status.value = "Resetting...";
+    await invoke('reset_shortcut');
+    await relaunch();
+  } catch (e) {
+    status.value = "Failed: " + e;
+  }
 }
 
 async function saveShortcut() {
@@ -139,51 +176,66 @@ function stopRecording() {
     <div class="section-content">
       <!-- Portal backend (Wayland) -->
       <template v-if="backendInfo?.backend === 'PortalGlobalShortcuts'">
-        <p class="hint">Press keys below, then click Apply to bind the shortcut.</p>
+        <!-- Warning if binding failed (e.g., launched from terminal) -->
+        <div v-if="portalBindError" class="notice warning">
+          <span class="notice-marker">[!]</span>
+          <div>
+            <p>Shortcut binding failed. For global shortcuts on Wayland:</p>
+            <ol class="steps">
+              <li>Run <code>./Whis.AppImage --install</code> in terminal</li>
+              <li>Launch Whis from your app menu</li>
+            </ol>
+          </div>
+        </div>
 
-        <div class="field">
-          <label>press to record</label>
-          <div
-            class="shortcut-input"
-            :class="{ recording: isRecording }"
-            @click="startRecording"
-            @blur="stopRecording"
-            @keydown="handleKeyDown"
-            tabindex="0"
-          >
+        <!-- Not yet bound: allow configuration -->
+        <template v-if="!portalShortcut && !portalBindError">
+          <p class="hint">Press keys below, then click Apply to bind the shortcut.</p>
+
+          <div class="field">
+            <label>press to record</label>
+            <div
+              class="shortcut-input"
+              :class="{ recording: isRecording }"
+              @click="startRecording"
+              @blur="stopRecording"
+              @keydown="handleKeyDown"
+              tabindex="0"
+            >
+              <div class="keys">
+                <span
+                  v-for="(key, index) in shortcutKeys"
+                  :key="index"
+                  class="key"
+                  :class="{ placeholder: key === '...' }"
+                >{{ key }}</span>
+              </div>
+              <span v-if="isRecording" class="recording-dot"></span>
+            </div>
+          </div>
+
+          <button @click="configureWithCapturedKey" class="btn btn-secondary" :disabled="isRecording || currentShortcut === 'Press keys...'">
+            Apply
+          </button>
+        </template>
+
+        <!-- Already bound: show current and reset option -->
+        <template v-else>
+          <div class="shortcut-display">
             <div class="keys">
               <span
                 v-for="(key, index) in shortcutKeys"
                 :key="index"
                 class="key"
-                :class="{ placeholder: key === '...' }"
               >{{ key }}</span>
             </div>
-            <span v-if="isRecording" class="recording-dot"></span>
           </div>
-        </div>
 
-        <button @click="configureWithCapturedKey" class="btn" :disabled="isRecording || currentShortcut === 'Press keys...'">
-          Apply
-        </button>
-
-        <!-- Reset instructions for existing shortcuts -->
-        <div v-if="portalShortcut" class="reset-info">
-          <label>to reset existing shortcut</label>
-          <div class="command" :class="{ copied }" @click="copyResetCommand">
-            <code>{{ resetCommand }}</code>
-            <button class="copy-btn" type="button">
-              <svg v-if="!copied" class="icon-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-              </svg>
-              <svg v-else class="icon-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="20 6 9 17 4 12"></polyline>
-              </svg>
-            </button>
-          </div>
-          <p class="hint">Run this command and restart Whis to clear conflicts.</p>
-        </div>
+          <p class="hint">To change, reset the binding first.</p>
+          <button @click="resetAndRestart" class="btn btn-secondary">
+            Reset & Restart
+          </button>
+        </template>
       </template>
 
       <!-- Manual Setup (Wayland without portal support) -->
@@ -209,7 +261,7 @@ function stopRecording() {
               </div>
               <div class="command-row">
                 <span class="command-label">Command:</span>
-                <code>flatpak run ink.whis.Whis --toggle</code>
+                <code>{{ toggleCommand }}</code>
               </div>
               <div class="command-row">
                 <span class="command-label">Shortcut:</span>
@@ -227,7 +279,7 @@ function stopRecording() {
             <div class="command-block">
               <div class="command-row">
                 <span class="command-label">Command:</span>
-                <code>flatpak run ink.whis.Whis --toggle</code>
+                <code>{{ toggleCommand }}</code>
               </div>
             </div>
           </template>
@@ -236,7 +288,7 @@ function stopRecording() {
           <template v-else-if="backendInfo.compositor.toLowerCase().includes('sway')">
             <p class="hint">Add to <code>~/.config/sway/config</code>:</p>
             <div class="command">
-              <code>bindsym {{ currentShortcut.toLowerCase() }} exec flatpak run ink.whis.Whis --toggle</code>
+              <code>bindsym {{ currentShortcut.toLowerCase() }} exec {{ toggleCommand }}</code>
             </div>
           </template>
 
@@ -244,7 +296,7 @@ function stopRecording() {
           <template v-else-if="backendInfo.compositor.toLowerCase().includes('hyprland')">
             <p class="hint">Add to <code>~/.config/hypr/hyprland.conf</code>:</p>
             <div class="command">
-              <code>bind = {{ currentShortcut.replace(/\+/g, ', ') }}, exec, flatpak run ink.whis.Whis --toggle</code>
+              <code>bind = {{ currentShortcut.replace(/\+/g, ', ') }}, exec, {{ toggleCommand }}</code>
             </div>
           </template>
 
@@ -252,7 +304,7 @@ function stopRecording() {
           <template v-else>
             <p class="hint">Configure your compositor to run:</p>
             <div class="command">
-              <code>flatpak run ink.whis.Whis --toggle</code>
+              <code>{{ toggleCommand }}</code>
             </div>
           </template>
         </div>
@@ -282,7 +334,7 @@ function stopRecording() {
           </div>
         </div>
 
-        <button @click="saveShortcut" class="btn" :disabled="isRecording">
+        <button @click="saveShortcut" class="btn btn-secondary" :disabled="isRecording">
           Save
         </button>
 
@@ -351,6 +403,16 @@ function stopRecording() {
 
 .shortcut-input.recording {
   border-color: var(--recording);
+}
+
+/* Read-only shortcut display */
+.shortcut-display {
+  display: flex;
+  align-items: center;
+  padding: 12px;
+  background: var(--bg-weak);
+  border: 1px solid var(--border);
+  border-radius: 4px;
 }
 
 .recording-dot {

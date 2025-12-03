@@ -3,6 +3,7 @@ import { ref, onMounted } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 
+import HomeView from './views/HomeView.vue';
 import ShortcutView from './views/ShortcutView.vue';
 import ApiKeyView from './views/ApiKeyView.vue';
 import AboutView from './views/AboutView.vue';
@@ -20,12 +21,13 @@ interface BackendInfo {
 }
 
 // Navigation
-type Section = 'shortcut' | 'api-key' | 'about';
-const activeSection = ref<Section>('shortcut');
+type Section = 'home' | 'shortcut' | 'api-key' | 'about';
+const activeSection = ref<Section>('home');
 
 // Settings state
 const currentShortcut = ref("Ctrl+Shift+R");
 const portalShortcut = ref<string | null>(null);
+const portalBindError = ref<string | null>(null);
 const apiKey = ref("");
 const backendInfo = ref<BackendInfo | null>(null);
 const loaded = ref(false);
@@ -70,10 +72,11 @@ onMounted(async () => {
 
   await loadSettings();
 
-  // For portal backend, fetch actual binding
+  // For portal backend, fetch actual binding and any errors
   if (backendInfo.value?.backend === 'PortalGlobalShortcuts') {
     try {
       portalShortcut.value = await invoke<string | null>('portal_shortcut');
+      portalBindError.value = await invoke<string | null>('portal_bind_error');
     } catch (e) {
       console.error('Failed to get portal shortcut:', e);
     }
@@ -93,6 +96,15 @@ onMounted(async () => {
         </div>
 
         <nav class="nav">
+          <button
+            class="nav-item"
+            :class="{ active: activeSection === 'home' }"
+            @click="activeSection = 'home'"
+          >
+            <span class="nav-marker">{{ activeSection === 'home' ? '>' : ' ' }}</span>
+            <span>home</span>
+          </button>
+
           <button
             class="nav-item"
             :class="{ active: activeSection === 'shortcut' }"
@@ -137,11 +149,18 @@ onMounted(async () => {
         </div>
 
         <!-- Views -->
+        <HomeView
+          v-if="activeSection === 'home'"
+          :current-shortcut="currentShortcut"
+          :portal-shortcut="portalShortcut"
+        />
+
         <ShortcutView
           v-if="activeSection === 'shortcut'"
           :backend-info="backendInfo"
           :current-shortcut="currentShortcut"
           :portal-shortcut="portalShortcut"
+          :portal-bind-error="portalBindError"
           :api-key="apiKey"
           @update:current-shortcut="currentShortcut = $event"
           @update:portal-shortcut="portalShortcut = $event"
@@ -299,6 +318,17 @@ body {
 .btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+.btn-secondary {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: var(--bg-weak);
+  border-color: var(--text-weak);
 }
 
 .btn-link {

@@ -69,7 +69,7 @@ async function saveApiKey() {
         </p>
       </div>
 
-      <button @click="saveApiKey" class="btn">Save</button>
+      <button @click="saveApiKey" class="btn btn-secondary">Save</button>
 
       <div class="status" :class="{ visible: status }">{{ status }}</div>
 

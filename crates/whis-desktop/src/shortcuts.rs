@@ -274,14 +274,20 @@ where
                     println!("Portal shortcuts registered. Listening for activations...");
                 }
                 Err(e) => {
-                    eprintln!("Portal bind response failed: {e}");
+                    let msg = format!("Portal bind response failed: {e}");
+                    eprintln!("{msg}");
                     eprintln!("Will use dconf shortcut if available");
+                    let state = app_handle.state::<crate::state::AppState>();
+                    *state.portal_bind_error.lock().unwrap() = Some(msg);
                 }
             }
         }
         Err(e) => {
-            eprintln!("Portal bind_shortcuts failed: {e}");
+            let msg = format!("Portal bind_shortcuts failed: {e}");
+            eprintln!("{msg}");
             eprintln!("Will use dconf shortcut if available");
+            let state = app_handle.state::<crate::state::AppState>();
+            *state.portal_bind_error.lock().unwrap() = Some(msg);
         }
     }
 
