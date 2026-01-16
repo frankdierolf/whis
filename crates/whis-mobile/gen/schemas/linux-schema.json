@@ -2391,10 +2391,28 @@
           "markdownDescription": "Denies the unminimize command without any pre-configured scope."
         },
         {
-          "description": "Default permissions for floating bubble plugin\n#### This default permission set includes:\n\n- `allow-show-bubble`\n- `allow-hide-bubble`\n- `allow-is-bubble-visible`\n- `allow-request-overlay-permission`\n- `allow-has-overlay-permission`\n- `allow-set-bubble-state`",
+          "description": "Default permissions for floating bubble plugin\n#### This default permission set includes:\n\n- `allow-show-bubble`\n- `allow-hide-bubble`\n- `allow-is-bubble-visible`\n- `allow-request-overlay-permission`\n- `allow-has-overlay-permission`\n- `allow-request-microphone-permission`\n- `allow-has-microphone-permission`\n- `allow-set-bubble-state`\n- `allow-handle-bubble-click`\n- `allow-handle-bubble-close`",
           "type": "string",
           "const": "floating-bubble:default",
-          "markdownDescription": "Default permissions for floating bubble plugin\n#### This default permission set includes:\n\n- `allow-show-bubble`\n- `allow-hide-bubble`\n- `allow-is-bubble-visible`\n- `allow-request-overlay-permission`\n- `allow-has-overlay-permission`\n- `allow-set-bubble-state`"
+          "markdownDescription": "Default permissions for floating bubble plugin\n#### This default permission set includes:\n\n- `allow-show-bubble`\n- `allow-hide-bubble`\n- `allow-is-bubble-visible`\n- `allow-request-overlay-permission`\n- `allow-has-overlay-permission`\n- `allow-request-microphone-permission`\n- `allow-has-microphone-permission`\n- `allow-set-bubble-state`\n- `allow-handle-bubble-click`\n- `allow-handle-bubble-close`"
+        },
+        {
+          "description": "Enables the handle_bubble_click command without any pre-configured scope.",
+          "type": "string",
+          "const": "floating-bubble:allow-handle-bubble-click",
+          "markdownDescription": "Enables the handle_bubble_click command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the handle_bubble_close command without any pre-configured scope.",
+          "type": "string",
+          "const": "floating-bubble:allow-handle-bubble-close",
+          "markdownDescription": "Enables the handle_bubble_close command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the has_microphone_permission command without any pre-configured scope.",
+          "type": "string",
+          "const": "floating-bubble:allow-has-microphone-permission",
+          "markdownDescription": "Enables the has_microphone_permission command without any pre-configured scope."
         },
         {
           "description": "Enables the has_overlay_permission command without any pre-configured scope.",
@@ -2413,6 +2431,12 @@
           "type": "string",
           "const": "floating-bubble:allow-is-bubble-visible",
           "markdownDescription": "Enables the is_bubble_visible command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the request_microphone_permission command without any pre-configured scope.",
+          "type": "string",
+          "const": "floating-bubble:allow-request-microphone-permission",
+          "markdownDescription": "Enables the request_microphone_permission command without any pre-configured scope."
         },
         {
           "description": "Enables the request_overlay_permission command without any pre-configured scope.",
@@ -2439,6 +2463,24 @@
           "markdownDescription": "Enables the show_bubble command without any pre-configured scope."
         },
         {
+          "description": "Denies the handle_bubble_click command without any pre-configured scope.",
+          "type": "string",
+          "const": "floating-bubble:deny-handle-bubble-click",
+          "markdownDescription": "Denies the handle_bubble_click command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the handle_bubble_close command without any pre-configured scope.",
+          "type": "string",
+          "const": "floating-bubble:deny-handle-bubble-close",
+          "markdownDescription": "Denies the handle_bubble_close command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the has_microphone_permission command without any pre-configured scope.",
+          "type": "string",
+          "const": "floating-bubble:deny-has-microphone-permission",
+          "markdownDescription": "Denies the has_microphone_permission command without any pre-configured scope."
+        },
+        {
           "description": "Denies the has_overlay_permission command without any pre-configured scope.",
           "type": "string",
           "const": "floating-bubble:deny-has-overlay-permission",
@@ -2455,6 +2497,12 @@
           "type": "string",
           "const": "floating-bubble:deny-is-bubble-visible",
           "markdownDescription": "Denies the is_bubble_visible command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the request_microphone_permission command without any pre-configured scope.",
+          "type": "string",
+          "const": "floating-bubble:deny-request-microphone-permission",
+          "markdownDescription": "Denies the request_microphone_permission command without any pre-configured scope."
         },
         {
           "description": "Denies the request_overlay_permission command without any pre-configured scope.",

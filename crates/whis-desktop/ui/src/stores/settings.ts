@@ -1,4 +1,4 @@
-import type { BackendInfo, BubblePosition, CliShortcutMode, PostProcessor, Provider, Settings, ShortcutPathMismatch } from '../types'
+import type { BackendInfo, CliShortcutMode, PostProcessor, Provider, Settings, ShortcutPathMismatch } from '../types'
 import { invoke } from '@tauri-apps/api/core'
 import { nextTick, reactive, readonly, watch } from 'vue'
 
@@ -88,7 +88,7 @@ function getDefaultSettings(): Settings {
       active_preset: null,
       bubble: {
         enabled: false,
-        position: 'none' as BubblePosition,
+        position: 'none',
       },
       model_memory: {
         keep_model_loaded: true,
@@ -418,10 +418,6 @@ function setBubbleEnabled(value: boolean) {
   state.ui.bubble.enabled = value
 }
 
-function setBubblePosition(value: BubblePosition) {
-  state.ui.bubble.position = value
-}
-
 function setChunkDuration(value: number) {
   // Clamp to valid range (10-300 seconds)
   state.ui.chunk_duration_secs = Math.max(10, Math.min(300, value))
@@ -504,20 +500,8 @@ function createDownloadManager(key: DownloadKey) {
   }
 }
 
-const whisperDownloadManager = createDownloadManager('whisperDownload')
-const parakeetDownloadManager = createDownloadManager('parakeetDownload')
-
-// Download state management - Whisper (backwards-compatible exports)
-const startWhisperDownload = whisperDownloadManager.start
-const updateWhisperDownloadProgress = whisperDownloadManager.updateProgress
-const completeWhisperDownload = whisperDownloadManager.complete
-const failWhisperDownload = whisperDownloadManager.fail
-
-// Download state management - Parakeet (backwards-compatible exports)
-const startParakeetDownload = parakeetDownloadManager.start
-const updateParakeetDownloadProgress = parakeetDownloadManager.updateProgress
-const completeParakeetDownload = parakeetDownloadManager.complete
-const failParakeetDownload = parakeetDownloadManager.fail
+const whisperDownload = createDownloadManager('whisperDownload')
+const parakeetDownload = createDownloadManager('parakeetDownload')
 
 // Getter for default provider (used by SettingsView when switching modes)
 function getDefaultProvider(): Provider {
@@ -554,7 +538,6 @@ export const settingsStore = {
   setPortalShortcut,
   setMicrophoneDevice,
   setBubbleEnabled,
-  setBubblePosition,
   setChunkDuration,
   setKeepModelLoaded,
   setUnloadAfterMinutes,
@@ -568,12 +551,12 @@ export const settingsStore = {
   clearPreset,
 
   // Download state management
-  startWhisperDownload,
-  updateWhisperDownloadProgress,
-  completeWhisperDownload,
-  failWhisperDownload,
-  startParakeetDownload,
-  updateParakeetDownloadProgress,
-  completeParakeetDownload,
-  failParakeetDownload,
+  startWhisperDownload: whisperDownload.start,
+  updateWhisperDownloadProgress: whisperDownload.updateProgress,
+  completeWhisperDownload: whisperDownload.complete,
+  failWhisperDownload: whisperDownload.fail,
+  startParakeetDownload: parakeetDownload.start,
+  updateParakeetDownloadProgress: parakeetDownload.updateProgress,
+  completeParakeetDownload: parakeetDownload.complete,
+  failParakeetDownload: parakeetDownload.fail,
 }

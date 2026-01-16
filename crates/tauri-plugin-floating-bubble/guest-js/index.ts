@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
 
 /**
  * Configuration for a specific bubble state.
@@ -170,6 +171,43 @@ export async function hasOverlayPermission(): Promise<PermissionResponse> {
 }
 
 /**
+ * Request the microphone permission (RECORD_AUDIO).
+ * Opens the system permission dialog.
+ *
+ * This permission is required on Android 14+ for foreground services with microphone type.
+ *
+ * @returns Whether permission was granted (returns false if dialog was shown)
+ *
+ * @example
+ * ```typescript
+ * import { requestMicrophonePermission, hasMicrophonePermission } from 'tauri-plugin-floating-bubble'
+ * await requestMicrophonePermission()
+ * // After user responds, check if granted
+ * const { granted } = await hasMicrophonePermission()
+ * ```
+ */
+export async function requestMicrophonePermission(): Promise<PermissionResponse> {
+  return await invoke<PermissionResponse>('plugin:floating-bubble|request_microphone_permission')
+}
+
+/**
+ * Check if the microphone permission (RECORD_AUDIO) is granted.
+ *
+ * This permission is required on Android 14+ for foreground services with microphone type.
+ *
+ * @returns Whether permission is granted
+ *
+ * @example
+ * ```typescript
+ * import { hasMicrophonePermission } from 'tauri-plugin-floating-bubble'
+ * const { granted } = await hasMicrophonePermission()
+ * ```
+ */
+export async function hasMicrophonePermission(): Promise<PermissionResponse> {
+  return await invoke<PermissionResponse>('plugin:floating-bubble|has_microphone_permission')
+}
+
+/**
  * Update the bubble's visual state.
  *
  * @param state - The state name to set. Must be a key in the states map provided to showBubble.
@@ -183,7 +221,6 @@ export async function hasOverlayPermission(): Promise<PermissionResponse> {
  * ```
  */
 export async function setBubbleState(state: string): Promise<void> {
-  console.log('[FloatingBubble] setBubbleState invoking:', state)
   await invoke('plugin:floating-bubble|set_bubble_state', { state })
 }
 
@@ -225,8 +262,7 @@ export const BUBBLE_CLICK_EVENT = 'floating-bubble://click'
 export async function onBubbleClick(
   callback: (event: BubbleClickEvent) => void,
 ): Promise<() => void> {
-  const { listen } = await import('@tauri-apps/api/event')
-  return await listen(BUBBLE_CLICK_EVENT, (event) => {
+  return listen(BUBBLE_CLICK_EVENT, (event) => {
     callback(event.payload as BubbleClickEvent)
   })
 }
@@ -270,8 +306,7 @@ export const BUBBLE_CLOSE_EVENT = 'floating-bubble://close'
 export async function onBubbleClose(
   callback: (event: BubbleCloseEvent) => void,
 ): Promise<() => void> {
-  const { listen } = await import('@tauri-apps/api/event')
-  return await listen(BUBBLE_CLOSE_EVENT, (event) => {
+  return listen(BUBBLE_CLOSE_EVENT, (event) => {
     callback(event.payload as BubbleCloseEvent)
   })
 }

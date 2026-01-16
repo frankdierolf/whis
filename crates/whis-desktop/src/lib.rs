@@ -149,6 +149,9 @@ pub fn run(start_in_tray: bool) {
             commands::check_ollama_status,
             // Bubble commands
             commands::bubble_toggle_recording,
+            commands::bubble_get_position,
+            commands::bubble_move_by,
+            commands::bubble_save_position,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

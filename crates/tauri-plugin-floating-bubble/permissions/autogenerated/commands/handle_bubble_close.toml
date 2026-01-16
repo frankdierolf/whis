@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-handle-bubble-close"
+description = "Enables the handle_bubble_close command without any pre-configured scope."
+commands.allow = ["handle_bubble_close"]
+
+[[permission]]
+identifier = "deny-handle-bubble-close"
+description = "Denies the handle_bubble_close command without any pre-configured scope."
+commands.deny = ["handle_bubble_close"]

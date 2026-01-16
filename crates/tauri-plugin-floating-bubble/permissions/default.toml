@@ -6,5 +6,9 @@ permissions = [
     "allow-is-bubble-visible",
     "allow-request-overlay-permission",
     "allow-has-overlay-permission",
+    "allow-request-microphone-permission",
+    "allow-has-microphone-permission",
     "allow-set-bubble-state",
+    "allow-handle-bubble-click",
+    "allow-handle-bubble-close",
 ]

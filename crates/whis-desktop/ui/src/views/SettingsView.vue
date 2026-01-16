@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { TranscriptionMode } from '../components/settings/ModeCards.vue'
-import type { BubblePosition, PostProcessor, Provider, SelectOption } from '../types'
+import type { PostProcessor, Provider, SelectOption } from '../types'
 import { invoke } from '@tauri-apps/api/core'
 import { computed, onMounted, ref, watch } from 'vue'
 import AppSelect from '../components/AppSelect.vue'
@@ -33,15 +33,15 @@ const isStreaming = computed(() =>
   provider.value === 'openai-realtime' || provider.value === 'deepgram-realtime',
 )
 
-// Whether to show streaming toggle (cloud mode + provider that supports streaming)
-const showStreamingToggle = computed(() =>
-  transcriptionMode.value === 'cloud'
-  && (provider.value === 'openai' || provider.value === 'openai-realtime'
-    || provider.value === 'deepgram' || provider.value === 'deepgram-realtime'),
-)
-
 // Normalize provider for dropdown display (realtime variants show as base provider)
 const baseProvider = computed(() => normalizeProvider(provider.value))
+
+// Whether to show streaming toggle (cloud mode + provider that supports streaming)
+const showStreamingToggle = computed(() => {
+  if (transcriptionMode.value !== 'cloud')
+    return false
+  return baseProvider.value === 'openai' || baseProvider.value === 'deepgram'
+})
 
 // Whisper model validation (for local provider)
 const whisperModelValid = ref(false)
@@ -135,24 +135,20 @@ function handleProviderUpdate(value: string | null) {
   if (!value)
     return
 
-  // If selecting a provider that supports streaming and we're in streaming mode, use realtime variant
-  if (isStreaming.value) {
-    if (value === 'openai') {
-      settingsStore.setProvider('openai-realtime')
-      return
-    }
-    if (value === 'deepgram') {
-      settingsStore.setProvider('deepgram-realtime')
-      return
-    }
-  }
+  // Use realtime variant if streaming mode is enabled for supported providers
+  const effectiveProvider = isStreaming.value && (value === 'openai' || value === 'deepgram')
+    ? `${value}-realtime` as Provider
+    : value as Provider
 
-  const newProvider = value as Provider
-  settingsStore.setProvider(newProvider)
-  // Auto-sync post-processor to match provider (if user has cloud post-processor enabled)
-  if ((newProvider === 'openai' || newProvider === 'mistral')
-    && postProcessor.value !== 'none' && postProcessor.value !== 'ollama') {
-    settingsStore.setPostProcessor(newProvider as PostProcessor)
+  settingsStore.setProvider(effectiveProvider)
+
+  // Auto-sync post-processor to match provider (if cloud post-processor enabled)
+  const shouldSyncProcessor = (value === 'openai' || value === 'mistral')
+    && postProcessor.value !== 'none'
+    && postProcessor.value !== 'ollama'
+
+  if (shouldSyncProcessor) {
+    settingsStore.setPostProcessor(value as PostProcessor)
   }
 }
 
@@ -269,26 +265,9 @@ async function copyConfigPath() {
 
 // Bubble settings
 const bubbleEnabled = computed(() => settingsStore.state.ui.bubble.enabled)
-const bubblePosition = computed(() => settingsStore.state.ui.bubble.position)
-
-const bubblePositionOptions: SelectOption[] = [
-  { value: 'top', label: 'Top' },
-  { value: 'center', label: 'Center' },
-  { value: 'bottom', label: 'Bottom' },
-]
 
 function handleBubbleEnabledChange(value: boolean) {
   settingsStore.setBubbleEnabled(value)
-  // When enabling, set default position if none
-  if (value && bubblePosition.value === 'none') {
-    settingsStore.setBubblePosition('center')
-  }
-}
-
-function handleBubblePositionChange(value: string | null) {
-  if (value) {
-    settingsStore.setBubblePosition(value as BubblePosition)
-  }
 }
 
 // Model memory settings
@@ -436,15 +415,6 @@ function handleOllamaKeepAliveChange(value: string | null) {
             <ToggleSwitch
               :model-value="bubbleEnabled"
               @update:model-value="handleBubbleEnabledChange"
-            />
-          </div>
-
-          <div v-if="bubbleEnabled" class="field-row">
-            <label>Position</label>
-            <AppSelect
-              :model-value="bubblePosition === 'none' ? 'center' : bubblePosition"
-              :options="bubblePositionOptions"
-              @update:model-value="handleBubblePositionChange"
             />
           </div>
         </div>
@@ -616,7 +586,7 @@ function handleOllamaKeepAliveChange(value: string | null) {
 
           <div class="help-section">
             <h3>recording indicator</h3>
-            <p>Shows a floating indicator during recording. Choose position (top/center/bottom) or disable completely.</p>
+            <p>Shows a floating indicator during recording. Drag to reposition. The bubble remembers its last position.</p>
           </div>
 
           <div class="help-section">

@@ -23,9 +23,6 @@ export type TranscriptionMethod = 'standard' | 'streaming'
 // Text post-processing providers
 export type PostProcessor = 'none' | 'openai' | 'mistral' | 'ollama'
 
-// Bubble overlay position
-export type BubblePosition = 'none' | 'top' | 'center' | 'bottom'
-
 // CLI shortcut mode
 export type CliShortcutMode = 'system' | 'direct'
 
@@ -68,7 +65,7 @@ export interface Settings {
     active_preset: string | null
     bubble: {
       enabled: boolean
-      position: BubblePosition
+      position: string // Kept for backwards compatibility, no longer used by UI
     }
     model_memory: {
       keep_model_loaded: boolean
@@ -152,9 +149,12 @@ export function isLocalProvider(provider: Provider): boolean {
 
 // Normalize provider to base variant (realtime variants → base)
 export function normalizeProvider(provider: Provider): Provider {
-  if (provider === 'openai-realtime')
-    return 'openai'
-  if (provider === 'deepgram-realtime')
-    return 'deepgram'
-  return provider
+  switch (provider) {
+    case 'openai-realtime':
+      return 'openai'
+    case 'deepgram-realtime':
+      return 'deepgram'
+    default:
+      return provider
+  }
 }

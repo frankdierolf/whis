@@ -12,6 +12,7 @@ import { settingsStore } from '../stores/settings'
 
 // Floating bubble permission state
 const hasOverlayPermission = ref(false)
+const hasMicrophonePermission = ref(false)
 const bubbleError = ref<string | null>(null)
 
 // Provider options (loaded from backend, ordered by recommendation from whis-core)
@@ -86,9 +87,9 @@ const openaiMethod = computed<TranscriptionMethod>({
 })
 
 // Show streaming toggle only for OpenAI
-const showStreamingToggle = computed(() => {
-  return provider.value === 'openai' || provider.value === 'openai-realtime'
-})
+const showStreamingToggle = computed(() =>
+  provider.value === 'openai' || provider.value === 'openai-realtime',
+)
 
 // Streaming toggle state (convert TranscriptionMethod to boolean)
 const isStreamingEnabled = computed({
@@ -108,9 +109,9 @@ const deepgramMethod = computed<TranscriptionMethod>({
 })
 
 // Show streaming toggle for Deepgram
-const showDeepgramStreamingToggle = computed(() => {
-  return provider.value === 'deepgram' || provider.value === 'deepgram-realtime'
-})
+const showDeepgramStreamingToggle = computed(() =>
+  provider.value === 'deepgram' || provider.value === 'deepgram-realtime',
+)
 
 // Deepgram streaming toggle state
 const isDeepgramStreamingEnabled = computed({
@@ -122,11 +123,14 @@ const isDeepgramStreamingEnabled = computed({
 
 // Normalize provider for display (realtime variants show as base provider)
 const displayProvider = computed<Provider>(() => {
-  if (provider.value === 'openai-realtime')
-    return 'openai'
-  if (provider.value === 'deepgram-realtime')
-    return 'deepgram'
-  return provider.value
+  switch (provider.value) {
+    case 'openai-realtime':
+      return 'openai'
+    case 'deepgram-realtime':
+      return 'deepgram'
+    default:
+      return provider.value
+  }
 })
 
 // Post-processor binding
@@ -160,6 +164,7 @@ const floatingBubbleEnabled = computed({
 onMounted(async () => {
   presetsStore.loadPresets()
   await checkOverlayPermission()
+  await checkMicrophonePermission()
 
   // Load cloud providers from backend (ordered by recommendation from whis-core)
   try {
@@ -171,12 +176,12 @@ onMounted(async () => {
   }
 
   // If bubble was enabled but permission was revoked, disable it
-  if (settingsStore.state.floating_bubble_enabled && !hasOverlayPermission.value) {
+  if (settingsStore.state.floating_bubble_enabled && (!hasOverlayPermission.value || !hasMicrophonePermission.value)) {
     settingsStore.setFloatingBubbleEnabled(false)
   }
 
-  // Restore bubble state if enabled
-  if (settingsStore.state.floating_bubble_enabled && hasOverlayPermission.value) {
+  // Restore bubble state if enabled and both permissions granted
+  if (settingsStore.state.floating_bubble_enabled && hasOverlayPermission.value && hasMicrophonePermission.value) {
     await showBubble()
   }
 })
@@ -193,6 +198,18 @@ async function checkOverlayPermission() {
   }
 }
 
+// Check if microphone permission is granted
+async function checkMicrophonePermission() {
+  try {
+    const result = await bubble.hasMicrophonePermission()
+    hasMicrophonePermission.value = result.granted
+  }
+  catch (e) {
+    console.error('Failed to check microphone permission:', e)
+    hasMicrophonePermission.value = false
+  }
+}
+
 // Handle floating bubble toggle
 async function handleFloatingBubbleToggle(enabled: boolean) {
   bubbleError.value = null
@@ -203,7 +220,7 @@ async function handleFloatingBubbleToggle(enabled: boolean) {
     return
   }
 
-  // Check permission first
+  // Check overlay permission first
   if (!hasOverlayPermission.value) {
     try {
       await bubble.requestOverlayPermission()
@@ -213,6 +230,23 @@ async function handleFloatingBubbleToggle(enabled: boolean) {
       bubbleError.value = `Failed to request permission: ${e}`
     }
     return
+  }
+
+  // Check microphone permission (required for foreground service with mic type on Android 14+)
+  if (!hasMicrophonePermission.value) {
+    try {
+      await bubble.requestMicrophonePermission()
+      // Re-check after dialog - user may have granted it
+      await checkMicrophonePermission()
+      if (!hasMicrophonePermission.value) {
+        bubbleError.value = 'Microphone permission is required for background recording. Please grant the permission and try again.'
+        return
+      }
+    }
+    catch (e) {
+      bubbleError.value = `Failed to request microphone permission: ${e}`
+      return
+    }
   }
 
   await showBubble()
@@ -255,11 +289,12 @@ async function hideBubble() {
   }
 }
 
-// Re-check permission when app regains focus (user may have granted permission)
+// Re-check permissions when app regains focus (user may have granted permission)
 if (typeof document !== 'undefined') {
   document.addEventListener('visibilitychange', async () => {
     if (document.visibilityState === 'visible') {
       await checkOverlayPermission()
+      await checkMicrophonePermission()
     }
   })
 }
@@ -436,6 +471,12 @@ if (typeof document !== 'undefined') {
           <span v-if="!hasOverlayPermission && floatingBubbleEnabled" class="warning-hint">
             Overlay permission required. Tap toggle to request.
           </span>
+          <span v-if="hasOverlayPermission && !hasMicrophonePermission && floatingBubbleEnabled" class="warning-hint">
+            Microphone permission required. Tap toggle to request.
+          </span>
+          <span v-if="bubbleError" class="error-hint">
+            {{ bubbleError }}
+          </span>
         </div>
       </div>
 
@@ -557,6 +598,14 @@ if (typeof document !== 'undefined') {
   display: block;
   font-size: 12px;
   color: #f59e0b;
+  margin-top: 8px;
+  line-height: 1.5;
+}
+
+.error-hint {
+  display: block;
+  font-size: 12px;
+  color: #ef4444;
   margin-top: 8px;
   line-height: 1.5;
 }

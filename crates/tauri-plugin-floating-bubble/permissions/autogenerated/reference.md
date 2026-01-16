@@ -9,7 +9,11 @@ Default permissions for floating bubble plugin
 - `allow-is-bubble-visible`
 - `allow-request-overlay-permission`
 - `allow-has-overlay-permission`
+- `allow-request-microphone-permission`
+- `allow-has-microphone-permission`
 - `allow-set-bubble-state`
+- `allow-handle-bubble-click`
+- `allow-handle-bubble-close`
 
 ## Permission Table
 
@@ -19,6 +23,84 @@ Default permissions for floating bubble plugin
 <th>Description</th>
 </tr>
 
+
+<tr>
+<td>
+
+`floating-bubble:allow-handle-bubble-click`
+
+</td>
+<td>
+
+Enables the handle_bubble_click command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`floating-bubble:deny-handle-bubble-click`
+
+</td>
+<td>
+
+Denies the handle_bubble_click command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`floating-bubble:allow-handle-bubble-close`
+
+</td>
+<td>
+
+Enables the handle_bubble_close command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`floating-bubble:deny-handle-bubble-close`
+
+</td>
+<td>
+
+Denies the handle_bubble_close command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`floating-bubble:allow-has-microphone-permission`
+
+</td>
+<td>
+
+Enables the has_microphone_permission command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`floating-bubble:deny-has-microphone-permission`
+
+</td>
+<td>
+
+Denies the has_microphone_permission command without any pre-configured scope.
+
+</td>
+</tr>
 
 <tr>
 <td>
@@ -94,6 +176,32 @@ Enables the is_bubble_visible command without any pre-configured scope.
 <td>
 
 Denies the is_bubble_visible command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`floating-bubble:allow-request-microphone-permission`
+
+</td>
+<td>
+
+Enables the request_microphone_permission command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`floating-bubble:deny-request-microphone-permission`
+
+</td>
+<td>
+
+Denies the request_microphone_permission command without any pre-configured scope.
 
 </td>
 </tr>

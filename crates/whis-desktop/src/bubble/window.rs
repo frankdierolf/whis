@@ -3,7 +3,6 @@
 //! Creates the floating bubble overlay window with platform-specific configuration.
 
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
-use whis_core::settings::BubblePosition;
 
 use crate::state::AppState;
 
@@ -45,6 +44,11 @@ pub fn create_bubble_window(app: &AppHandle) -> Result<(), String> {
 
 /// Calculate bubble position based on settings.
 ///
+/// # Custom Position
+///
+/// If the user has dragged the bubble to a custom position, that position
+/// is used. Otherwise, defaults to bottom-center of the work area.
+///
 /// # Known Limitation (Linux/Dev Mode)
 ///
 /// Bubble positioning may not work correctly when running via `cargo tauri dev`.
@@ -58,6 +62,13 @@ pub fn create_bubble_window(app: &AppHandle) -> Result<(), String> {
 /// - <https://github.com/tauri-apps/tauri/issues/7376> (Linux positioning)
 /// - <https://github.com/tauri-apps/tauri/issues/12411> (Wayland limitations)
 pub fn calculate_bubble_position(app: &AppHandle) -> Result<(f64, f64), String> {
+    let state = app.state::<AppState>();
+
+    // Use custom position if set by user dragging
+    if let Some((x, y)) = state.with_settings(|s| s.ui.bubble.custom_position) {
+        return Ok((x, y));
+    }
+
     let monitor = app
         .primary_monitor()
         .map_err(|e| e.to_string())?
@@ -71,20 +82,9 @@ pub fn calculate_bubble_position(app: &AppHandle) -> Result<(f64, f64), String> 
     let work_area_x = work_area.position.x as f64 / scale;
     let work_area_y = work_area.position.y as f64 / scale;
 
-    let state = app.state::<AppState>();
-    let position = state.with_settings(|s| s.ui.bubble.position);
-
-    // Center horizontally within work area
+    // Default to bottom-center position
     let x = work_area_x + (work_area_width - BUBBLE_SIZE) / 2.0;
-
-    // Vertical position based on setting, relative to work area
-    let y = match position {
-        BubblePosition::Top => work_area_y + BUBBLE_OFFSET,
-        BubblePosition::Center => work_area_y + (work_area_height - BUBBLE_SIZE) / 2.0,
-        BubblePosition::Bottom | BubblePosition::None => {
-            work_area_y + work_area_height - BUBBLE_SIZE - BUBBLE_OFFSET
-        }
-    };
+    let y = work_area_y + work_area_height - BUBBLE_SIZE - BUBBLE_OFFSET;
 
     Ok((x, y))
 }

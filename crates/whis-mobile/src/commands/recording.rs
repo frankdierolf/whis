@@ -10,7 +10,7 @@ use tauri::{Emitter, State};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_store::StoreExt;
 use whis_core::config::TranscriptionProvider;
-use whis_core::{DeepgramRealtimeProvider, OpenAIRealtimeProvider, error, warn};
+use whis_core::{DeepgramRealtimeProvider, OpenAIRealtimeProvider, error, info, warn};
 
 // ========== Batch Transcription ==========
 
@@ -394,14 +394,19 @@ pub async fn start_recording(
 /// Samples should be f32 PCM at 16kHz sample rate.
 #[tauri::command]
 pub async fn send_audio_chunk(state: State<'_, AppState>, samples: Vec<f32>) -> Result<(), String> {
+    info!("send_audio_chunk: received {} samples", samples.len());
+
     let audio_tx = state.audio_tx.lock().expect("audio_tx mutex poisoned");
 
     if let Some(tx) = audio_tx.as_ref() {
         // Use unbounded send (won't block)
         if tx.send(samples).is_err() {
+            error!("send_audio_chunk: channel closed");
             return Err("Audio channel closed".to_string());
         }
+        info!("send_audio_chunk: sent to channel");
     } else {
+        error!("send_audio_chunk: no active recording");
         return Err("No active recording".to_string());
     }
 

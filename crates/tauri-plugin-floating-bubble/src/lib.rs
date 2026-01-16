@@ -63,7 +63,11 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::is_bubble_visible,
             commands::request_overlay_permission,
             commands::has_overlay_permission,
+            commands::request_microphone_permission,
+            commands::has_microphone_permission,
             commands::set_bubble_state,
+            commands::handle_bubble_click,
+            commands::handle_bubble_close,
         ])
         .setup(|app, api| {
             #[cfg(mobile)]

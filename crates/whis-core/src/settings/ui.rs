@@ -150,6 +150,11 @@ pub struct BubbleSettings {
     /// Bubble position on screen.
     #[serde(default)]
     pub position: BubblePosition,
+
+    /// Custom bubble position (x, y) set by user dragging.
+    /// When set, overrides the `position` preset.
+    #[serde(default)]
+    pub custom_position: Option<(f64, f64)>,
 }
 
 impl Default for BubbleSettings {
@@ -157,6 +162,7 @@ impl Default for BubbleSettings {
         Self {
             enabled: false,
             position: BubblePosition::None,
+            custom_position: None,
         }
     }
 }

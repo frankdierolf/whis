@@ -1,7 +1,9 @@
 package ink.whis.floatingbubble
 
+import android.Manifest
 import android.app.Activity
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Color
 import android.net.Uri
 import android.os.Build
@@ -10,6 +12,7 @@ import android.os.Looper
 import android.provider.Settings
 import android.util.Log
 import android.webkit.WebView
+import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import app.tauri.annotation.Command
 import app.tauri.annotation.InvokeArg
@@ -62,80 +65,158 @@ class FloatingBubblePlugin(private val activity: Activity) : Plugin(activity) {
 
     companion object {
         private const val TAG = "FloatingBubblePlugin"
+        private const val REQUEST_MICROPHONE_PERMISSION = 1001
 
         // Static flag to track bubble visibility across service restarts
         @Volatile
         var isBubbleVisible: Boolean = false
-        
+
+        // Track if the activity is in foreground (WebView is active)
+        @Volatile
+        var isActivityResumed: Boolean = false
+
+        // Track if native recording is active (when app is backgrounded)
+        @Volatile
+        var isNativeRecording: Boolean = false
+
         // Reference to the plugin instance for sending events from the service
         @Volatile
         private var pluginInstance: FloatingBubblePlugin? = null
-        
+
         // Reference to WebView for emitting events via JavaScript
         @Volatile
-        private var webViewInstance: WebView? = null
-        
-        /**
-         * Called from FloatingBubbleService when the bubble is clicked.
-         * Emits a global Tauri event via WebView JavaScript evaluation.
-         */
-        fun sendBubbleClickEvent() {
-            val webView = webViewInstance ?: return
+        var webViewInstance: WebView? = null
 
-            // Run on main thread to ensure WebView access is safe
+        /**
+         * Emit a Tauri event via WebView JavaScript evaluation.
+         */
+        private fun emitTauriEvent(eventName: String, action: String) {
+            val webView = webViewInstance
+            if (webView == null) {
+                Log.w(TAG, "emitTauriEvent($eventName): WebView is null")
+                return
+            }
+
+            Log.d(TAG, "emitTauriEvent: Emitting $eventName")
             Handler(Looper.getMainLooper()).post {
                 try {
-                    // Emit event via Tauri's internal event system (same pattern as plugin-store)
                     val js = """
                         (function() {
+                            console.log('[FloatingBubble] Emitting $eventName event');
                             if (window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke) {
                                 window.__TAURI_INTERNALS__.invoke('plugin:event|emit', {
-                                    event: 'floating-bubble://click',
-                                    payload: { action: 'click' }
+                                    event: '$eventName',
+                                    payload: { action: '$action' }
                                 }).catch(function(e) { console.error('Failed to emit event:', e); });
+                            } else {
+                                console.error('[FloatingBubble] TAURI_INTERNALS not available');
                             }
                         })();
                     """.trimIndent()
                     webView.evaluateJavascript(js, null)
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error emitting bubble-click event", e)
+                    Log.e(TAG, "Error emitting $eventName event", e)
                 }
             }
         }
 
         /**
-         * Called from FloatingBubbleService when the bubble is closed via drag-to-close.
-         * Emits a global Tauri event via WebView JavaScript evaluation.
+         * Emit bubble click event to frontend.
          */
-        fun sendCloseEvent() {
-            val webView = webViewInstance ?: return
+        fun invokeBubbleClick() {
+            emitTauriEvent("floating-bubble://click", "click")
+        }
 
-            // Run on main thread to ensure WebView access is safe
+        /**
+         * Emit bubble close event to frontend.
+         */
+        fun invokeBubbleClose() {
+            emitTauriEvent("floating-bubble://close", "close")
+        }
+
+        /**
+         * Start native audio recording.
+         * Called when bubble is clicked while app is backgrounded.
+         */
+        fun startNativeRecording() {
+            Log.d(TAG, "startNativeRecording called")
+            FloatingBubbleService.startRecording()
+        }
+
+        /**
+         * Stop native audio recording.
+         */
+        fun stopNativeRecording() {
+            Log.d(TAG, "stopNativeRecording called")
+            FloatingBubbleService.stopRecording()
+        }
+
+        /**
+         * Sync native recording state to frontend when app resumes.
+         */
+        fun syncNativeRecordingState() {
+            if (!isNativeRecording) return
+
+            val webView = webViewInstance ?: return
+            Log.d(TAG, "Syncing native recording state to frontend")
+
             Handler(Looper.getMainLooper()).post {
                 try {
-                    // Emit event via Tauri's internal event system (same pattern as plugin-store)
                     val js = """
                         (function() {
-                            if (window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke) {
-                                window.__TAURI_INTERNALS__.invoke('plugin:event|emit', {
-                                    event: 'floating-bubble://close',
-                                    payload: { action: 'close' }
-                                }).catch(function(e) { console.error('Failed to emit event:', e); });
-                            }
+                            console.log('[FloatingBubble] Syncing native recording state');
+                            window.dispatchEvent(new CustomEvent('native-recording-active', {
+                                detail: { isRecording: true }
+                            }));
                         })();
                     """.trimIndent()
                     webView.evaluateJavascript(js, null)
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error emitting bubble-close event", e)
+                    Log.e(TAG, "Error syncing native recording state", e)
                 }
             }
         }
     }
     
+    /**
+     * JavaScript bridge for recording callbacks.
+     * Allows JS to call native methods when async operations complete.
+     */
+    private inner class RecordingBridge {
+        @android.webkit.JavascriptInterface
+        fun onBackendReady() {
+            Log.d(TAG, "RecordingBridge: Backend ready callback received")
+            FloatingBubbleService.onBackendReady()
+        }
+
+        @android.webkit.JavascriptInterface
+        fun onChunksFlushed() {
+            Log.d(TAG, "RecordingBridge: Chunks flushed callback received")
+            FloatingBubbleService.onChunksFlushed()
+        }
+    }
+
     override fun load(webView: WebView) {
         super.load(webView)
         pluginInstance = this
         webViewInstance = webView
+        // Register JavaScript interface for recording callbacks
+        webView.addJavascriptInterface(RecordingBridge(), "WhisRecordingBridge")
+    }
+
+    override fun onResume() {
+        super.onResume()
+        isActivityResumed = true
+        Log.d(TAG, "Activity resumed - WebView active")
+
+        // Sync native recording state to frontend if active
+        syncNativeRecordingState()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        isActivityResumed = false
+        Log.d(TAG, "Activity paused - WebView inactive")
     }
 
     /**
@@ -256,6 +337,47 @@ class FloatingBubblePlugin(private val activity: Activity) : Plugin(activity) {
     }
 
     /**
+     * Check if the RECORD_AUDIO permission is granted.
+     * This is required for foreground service with microphone type on Android 14+.
+     */
+    @Command
+    fun hasMicrophonePermission(invoke: Invoke) {
+        val result = JSObject()
+        result.put("granted", hasMicrophonePermissionInternal())
+        invoke.resolve(result)
+    }
+
+    /**
+     * Request the RECORD_AUDIO permission.
+     * Returns immediately - check hasMicrophonePermission after user responds.
+     */
+    @Command
+    fun requestMicrophonePermission(invoke: Invoke) {
+        if (hasMicrophonePermissionInternal()) {
+            val result = JSObject()
+            result.put("granted", true)
+            invoke.resolve(result)
+            return
+        }
+
+        try {
+            ActivityCompat.requestPermissions(
+                activity,
+                arrayOf(Manifest.permission.RECORD_AUDIO),
+                REQUEST_MICROPHONE_PERMISSION
+            )
+
+            // Note: We can't wait for the result here, so we return false
+            // The user should call hasMicrophonePermission after returning to the app
+            val result = JSObject()
+            result.put("granted", false)
+            invoke.resolve(result)
+        } catch (e: Exception) {
+            invoke.reject("Failed to request microphone permission: ${e.message}")
+        }
+    }
+
+    /**
      * Update the bubble's visual state.
      */
     @Command
@@ -274,6 +396,26 @@ class FloatingBubblePlugin(private val activity: Activity) : Plugin(activity) {
     }
 
     /**
+     * Handle bubble click - emits event via WebView to notify the frontend.
+     */
+    @Command
+    fun handleBubbleClick(invoke: Invoke) {
+        Log.d(TAG, "handleBubbleClick command received")
+        invokeBubbleClick()
+        invoke.resolve()
+    }
+
+    /**
+     * Handle bubble close - emits event via WebView to notify the frontend.
+     */
+    @Command
+    fun handleBubbleClose(invoke: Invoke) {
+        Log.d(TAG, "handleBubbleClose command received")
+        invokeBubbleClose()
+        invoke.resolve()
+    }
+
+    /**
      * Internal helper to check overlay permission.
      */
     private fun hasOverlayPermissionInternal(): Boolean {
@@ -282,5 +424,15 @@ class FloatingBubblePlugin(private val activity: Activity) : Plugin(activity) {
         } else {
             true // Permission not required on older versions
         }
+    }
+
+    /**
+     * Internal helper to check microphone permission.
+     */
+    private fun hasMicrophonePermissionInternal(): Boolean {
+        return ContextCompat.checkSelfPermission(
+            activity,
+            Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED
     }
 }

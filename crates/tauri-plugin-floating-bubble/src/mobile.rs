@@ -6,20 +6,20 @@ use tauri::{
 
 use crate::models::*;
 
-// initializes the Kotlin plugin class
+/// Initializes the mobile plugin.
 pub fn init<R: Runtime, C: DeserializeOwned>(
     _app: &AppHandle<R>,
     api: PluginApi<R, C>,
 ) -> crate::Result<FloatingBubble<R>> {
-    #[cfg(target_os = "android")]
-    let handle = api.register_android_plugin("ink.whis.floatingbubble", "FloatingBubblePlugin")?;
     #[cfg(target_os = "ios")]
-    let handle = {
-        // iOS is not supported, but we need to return something
-        // This code path should never be reached in practice
-        return Err(crate::Error::UnsupportedPlatform);
-    };
-    Ok(FloatingBubble(handle))
+    return Err(crate::Error::UnsupportedPlatform);
+
+    #[cfg(target_os = "android")]
+    {
+        let handle =
+            api.register_android_plugin("ink.whis.floatingbubble", "FloatingBubblePlugin")?;
+        Ok(FloatingBubble(handle))
+    }
 }
 
 /// Access to the floating bubble APIs.
@@ -65,6 +65,20 @@ impl<R: Runtime> FloatingBubble<R> {
     pub fn set_state(&self, state: String) -> crate::Result<()> {
         self.0
             .run_mobile_plugin("setBubbleState", StateOptions { state })
+            .map_err(Into::into)
+    }
+
+    /// Request microphone permission (RECORD_AUDIO).
+    pub fn request_microphone_permission(&self) -> crate::Result<PermissionResponse> {
+        self.0
+            .run_mobile_plugin("requestMicrophonePermission", ())
+            .map_err(Into::into)
+    }
+
+    /// Check if microphone permission is granted.
+    pub fn has_microphone_permission(&self) -> crate::Result<PermissionResponse> {
+        self.0
+            .run_mobile_plugin("hasMicrophonePermission", ())
             .map_err(Into::into)
     }
 }
