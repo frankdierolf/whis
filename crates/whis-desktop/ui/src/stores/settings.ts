@@ -75,6 +75,7 @@ function getDefaultSettings(): Settings {
     shortcuts: {
       cli_mode: 'system' as CliShortcutMode,
       cli_key: defaults.desktop_key,
+      cli_push_to_talk: false,
       desktop_key: defaults.desktop_key,
     },
     ui: {
@@ -201,6 +202,7 @@ async function load() {
     state.shortcuts = {
       cli_mode: settings.shortcuts?.cli_mode || 'system',
       cli_key: settings.shortcuts?.cli_key || defaults.desktop_key,
+      cli_push_to_talk: settings.shortcuts?.cli_push_to_talk ?? false,
       desktop_key: settings.shortcuts?.desktop_key || defaults.desktop_key,
     }
     state.ui = {

@@ -1,12 +1,23 @@
 //! Background service for `whis start` mode
 //!
 //! Runs as a long-lived process that listens for hotkey events (direct mode)
-//! or IPC commands (system shortcut mode) to toggle recording.
+//! or IPC commands (system shortcut mode) to control recording.
 //!
-//! # State Machine
+//! # Toggle Mode (default, cli-push-to-talk = false)
 //!
 //! ```text
-//! ┌─────────┐  toggle   ┌───────────┐  toggle   ┌──────────────┐
+//! ┌─────────┐  press    ┌───────────┐  press    ┌──────────────┐
+//! │  Idle   │ ────────► │ Recording │ ────────► │ Transcribing │
+//! └─────────┘           └───────────┘           └──────────────┘
+//!      ▲                                               │
+//!      └───────────────────────────────────────────────┘
+//!                        (auto return)
+//! ```
+//!
+//! # Push-to-Talk Mode (cli-push-to-talk = true)
+//!
+//! ```text
+//! ┌─────────┐  press    ┌───────────┐  release  ┌──────────────┐
 //! │  Idle   │ ────────► │ Recording │ ────────► │ Transcribing │
 //! └─────────┘           └───────────┘           └──────────────┘
 //!      ▲                                               │
@@ -26,6 +37,7 @@ use std::sync::{Arc, Mutex};
 use tokio::time::sleep;
 
 use crate::app::TranscriptionConfig;
+use crate::hotkey::HotkeyEvent;
 use crate::ipc::{IpcMessage, IpcResponse, IpcServer};
 use std::time::Duration;
 use whis_core::{
@@ -70,7 +82,11 @@ impl Service {
     }
 
     /// Run the service main loop
-    pub async fn run(&self, hotkey_rx: Option<Receiver<()>>) -> Result<()> {
+    pub async fn run(
+        &self,
+        hotkey_rx: Option<Receiver<HotkeyEvent>>,
+        push_to_talk: bool,
+    ) -> Result<()> {
         // Create IPC server
         let ipc_server = IpcServer::new().context("Failed to create IPC server")?;
 
@@ -98,11 +114,26 @@ impl Service {
                 }
             }
 
-            // Check for hotkey toggle signal (non-blocking)
-            if let Some(ref rx) = hotkey_rx
-                && rx.try_recv().is_ok()
-            {
-                self.handle_toggle().await;
+            // Check for hotkey events
+            if let Some(ref rx) = hotkey_rx {
+                if let Ok(event) = rx.try_recv() {
+                    if push_to_talk {
+                        // Push-to-talk mode: press starts, release stops
+                        match event {
+                            HotkeyEvent::Pressed => {
+                                self.handle_start().await;
+                            }
+                            HotkeyEvent::Released => {
+                                self.handle_stop().await;
+                            }
+                        }
+                    } else {
+                        // Toggle mode: only respond to press events
+                        if event == HotkeyEvent::Pressed {
+                            self.handle_toggle().await;
+                        }
+                    }
+                }
             }
 
             // Small sleep to prevent busy waiting
@@ -181,6 +212,57 @@ impl Service {
             ServiceState::Transcribing => {
                 // Already transcribing, ignore
                 IpcResponse::Transcribing
+            }
+        }
+    }
+
+    /// Handle hotkey press (start recording) - push-to-talk mode
+    async fn handle_start(&self) {
+        let current_state = *self.state.lock().unwrap();
+
+        if current_state != ServiceState::Idle {
+            return; // Only start if idle
+        }
+
+        // Increment recording counter and start recording
+        let count = {
+            let mut c = self.recording_counter.lock().unwrap();
+            *c += 1;
+            *c
+        };
+        match self.start_recording().await {
+            Ok(_) => {
+                println!("#{count} Recording...");
+            }
+            Err(e) => {
+                println!("#{count} error: {e}");
+            }
+        }
+    }
+
+    /// Handle hotkey release (stop recording) - push-to-talk mode
+    async fn handle_stop(&self) {
+        let current_state = *self.state.lock().unwrap();
+
+        if current_state != ServiceState::Recording {
+            return; // Only stop if currently recording
+        }
+
+        // Stop recording and transcribe
+        *self.state.lock().unwrap() = ServiceState::Transcribing;
+        let count = *self.recording_counter.lock().unwrap();
+
+        println!("#{count} Transcribing...");
+
+        match self.stop_and_transcribe(count).await {
+            Ok(_) => {
+                *self.state.lock().unwrap() = ServiceState::Idle;
+                println!(); // blank line between transcriptions
+            }
+            Err(e) => {
+                *self.state.lock().unwrap() = ServiceState::Idle;
+                println!("#{count} error: {e}");
+                println!();
             }
         }
     }

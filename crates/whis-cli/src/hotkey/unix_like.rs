@@ -2,6 +2,8 @@ use anyhow::Result;
 use std::sync::mpsc::Receiver;
 use whis_core::hotkey::Hotkey;
 
+use super::HotkeyEvent;
+
 #[cfg(target_os = "linux")]
 use rdev::grab;
 
@@ -19,14 +21,21 @@ use whis_core::hotkey::lock_or_recover;
 
 pub struct HotkeyGuard;
 
-pub fn setup(hotkey_str: &str) -> Result<(Receiver<()>, HotkeyGuard)> {
+pub fn setup(hotkey_str: &str) -> Result<(Receiver<HotkeyEvent>, HotkeyGuard)> {
     let hotkey = Hotkey::parse(hotkey_str).map_err(|e| anyhow::anyhow!(e))?;
     let (tx, rx) = std::sync::mpsc::channel();
+    let tx_release = tx.clone();
 
     std::thread::spawn(move || {
-        if let Err(e) = listen_for_hotkey(hotkey, move || {
-            let _ = tx.send(());
-        }) {
+        if let Err(e) = listen_for_hotkey(
+            hotkey,
+            move || {
+                let _ = tx.send(HotkeyEvent::Pressed);
+            },
+            move || {
+                let _ = tx_release.send(HotkeyEvent::Released);
+            },
+        ) {
             eprintln!("Hotkey error: {e}");
         }
     });
@@ -34,16 +43,21 @@ pub fn setup(hotkey_str: &str) -> Result<(Receiver<()>, HotkeyGuard)> {
     Ok((rx, HotkeyGuard))
 }
 
-/// Listen for a hotkey and call the callback when pressed
+/// Listen for a hotkey and call callbacks on press/release (push-to-talk mode)
 /// This function blocks and runs until an error occurs
-pub fn listen_for_hotkey<F>(hotkey: Hotkey, on_press: F) -> Result<()>
+pub fn listen_for_hotkey<FPress, FRelease>(
+    hotkey: Hotkey,
+    on_press: FPress,
+    on_release: FRelease,
+) -> Result<()>
 where
-    F: Fn() + Send + 'static,
+    FPress: Fn() + Send + 'static,
+    FRelease: Fn() + Send + 'static,
 {
     // Linux: Use shared grab callback from whis-core
     #[cfg(target_os = "linux")]
     {
-        let callback = whis_core::hotkey::create_grab_callback(hotkey, on_press);
+        let callback = whis_core::hotkey::create_grab_callback(hotkey, on_press, on_release);
 
         if let Err(e) = grab(callback) {
             anyhow::bail!(
@@ -82,7 +96,10 @@ where
 
                 if key == main_key {
                     let mut triggered = lock_or_recover(&hotkey_triggered_clone);
-                    *triggered = false;
+                    if *triggered {
+                        *triggered = false;
+                        on_release();
+                    }
                 }
             }
             _ => {}

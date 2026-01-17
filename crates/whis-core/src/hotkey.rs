@@ -37,25 +37,28 @@ pub fn lock_or_recover<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 /// This is the shared implementation used by both CLI and Desktop for direct keyboard
 /// capture on Linux. It handles:
 /// - Tracking currently pressed keys
-/// - Detecting when the hotkey combination is pressed
+/// - Detecting when the hotkey combination is pressed (push-to-talk start)
+/// - Detecting when the main key is released (push-to-talk stop)
 /// - Preventing double-fire on key repeat (via triggered flag)
-/// - Resetting state on main key release
 ///
 /// Returns `None` to consume the event (hotkey was triggered), `Some(event)` to pass through.
 ///
 /// # Example
 /// ```ignore
-/// let callback = create_grab_callback(hotkey, || {
-///     println!("Hotkey pressed!");
-/// });
+/// let callback = create_grab_callback(hotkey,
+///     || println!("Hotkey pressed - start recording!"),
+///     || println!("Hotkey released - stop recording!"),
+/// );
 /// rdev::grab(callback)?;
 /// ```
-pub fn create_grab_callback<F>(
+pub fn create_grab_callback<FPress, FRelease>(
     hotkey: Hotkey,
-    on_trigger: F,
+    on_trigger: FPress,
+    on_release: FRelease,
 ) -> impl Fn(Event) -> Option<Event> + Send
 where
-    F: Fn() + Send + 'static,
+    FPress: Fn() + Send + 'static,
+    FRelease: Fn() + Send + 'static,
 {
     let pressed_keys: Arc<Mutex<HashSet<Key>>> = Arc::new(Mutex::new(HashSet::new()));
     let hotkey_triggered: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
@@ -85,7 +88,10 @@ where
 
                 if key == main_key {
                     let mut triggered = lock_or_recover(&hotkey_triggered);
-                    *triggered = false; // Reset on main key release
+                    if *triggered {
+                        *triggered = false;
+                        on_release();
+                    }
                 }
                 Some(event)
             }

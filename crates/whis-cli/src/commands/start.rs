@@ -26,14 +26,25 @@ pub fn run() -> Result<()> {
         CliShortcutMode::Direct => {
             // Try to set up hotkey via evdev/rdev
             let shortcut = &settings.shortcuts.cli_key;
+            let push_to_talk = settings.shortcuts.cli_push_to_talk;
             match hotkey::setup(shortcut) {
                 Ok((hotkey_rx, _guard)) => {
-                    println!("Listening. Press {} to record. Ctrl+C to stop.", shortcut);
+                    if push_to_talk {
+                        println!(
+                            "Listening. Hold {} to record (push-to-talk). Ctrl+C to stop.",
+                            shortcut
+                        );
+                    } else {
+                        println!(
+                            "Listening. Press {} to toggle recording. Ctrl+C to stop.",
+                            shortcut
+                        );
+                    }
 
                     runtime.block_on(async {
                         let service = service::Service::new(config)?;
                         tokio::select! {
-                            result = service.run(Some(hotkey_rx)) => result,
+                            result = service.run(Some(hotkey_rx), push_to_talk) => result,
                             _ = tokio::signal::ctrl_c() => {
                                 println!("\nShutting down...");
                                 Ok(())
@@ -61,7 +72,7 @@ pub fn run() -> Result<()> {
             runtime.block_on(async {
                 let service = service::Service::new(config)?;
                 tokio::select! {
-                    result = service.run(None) => result,
+                    result = service.run(None, false) => result,
                     _ = tokio::signal::ctrl_c() => {
                         println!("\nShutting down...");
                         Ok(())

@@ -52,6 +52,7 @@ export interface Settings {
   shortcuts: {
     cli_mode: CliShortcutMode
     cli_key: string
+    cli_push_to_talk: boolean
     desktop_key: string
   }
   ui: {

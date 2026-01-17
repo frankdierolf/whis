@@ -1,14 +1,16 @@
-//! Windows hotkey support using global-hotkey crate
+//! Windows hotkey support using global-hotkey crate (push-to-talk mode)
 
 use anyhow::Result;
-use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, hotkey::HotKey};
+use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState, hotkey::HotKey};
 use std::sync::mpsc::Receiver;
+
+use super::HotkeyEvent;
 
 pub struct HotkeyGuard {
     _manager: GlobalHotKeyManager,
 }
 
-pub fn setup(hotkey_str: &str) -> Result<(Receiver<()>, HotkeyGuard)> {
+pub fn setup(hotkey_str: &str) -> Result<(Receiver<HotkeyEvent>, HotkeyGuard)> {
     let converted = convert_to_global_hotkey_format(hotkey_str)?;
     let hotkey: HotKey = converted
         .parse()
@@ -34,7 +36,11 @@ pub fn setup(hotkey_str: &str) -> Result<(Receiver<()>, HotkeyGuard)> {
         loop {
             if let Ok(event) = receiver.recv() {
                 if event.id() == hotkey_id {
-                    let _ = tx.send(());
+                    let hotkey_event = match event.state() {
+                        HotKeyState::Pressed => HotkeyEvent::Pressed,
+                        HotKeyState::Released => HotkeyEvent::Released,
+                    };
+                    let _ = tx.send(hotkey_event);
                 }
             }
         }

@@ -84,6 +84,14 @@ pub struct ShortcutsSettings {
     /// Used by whis-desktop application.
     #[serde(default = "default_shortcut")]
     pub desktop_key: String,
+
+    /// Push-to-talk mode for CLI direct hotkey.
+    ///
+    /// When enabled, recording starts when the hotkey is pressed and stops
+    /// when released. When disabled (default), the hotkey toggles recording.
+    /// Only used when `cli_mode` is `direct`.
+    #[serde(default)]
+    pub cli_push_to_talk: bool,
 }
 
 impl Default for ShortcutsSettings {
@@ -92,6 +100,7 @@ impl Default for ShortcutsSettings {
             cli_mode: CliShortcutMode::default(),
             cli_key: default_shortcut(),
             desktop_key: default_shortcut(),
+            cli_push_to_talk: false,
         }
     }
 }
