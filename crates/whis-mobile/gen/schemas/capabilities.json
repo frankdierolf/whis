@@ -1,1 +1,0 @@
-{"default":{"identifier":"default","description":"Default capabilities for Whis mobile app","local":true,"windows":["main"],"permissions":["core:default","clipboard-manager:default","clipboard-manager:allow-write-text","clipboard-manager:allow-read-text","opener:default","store:default","floating-bubble:default"]}}

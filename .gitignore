@@ -36,6 +36,12 @@ vite.config.d.ts
 # Tauri generated (only ignore desktop, mobile gen is tracked for Android customizations)
 crates/whis-desktop/gen/
 
+# Tauri auto-generated schemas (regenerated on build)
+crates/whis-mobile/gen/schemas/
+
+# Example app generated files (regenerate with cargo tauri android init)
+crates/tauri-plugin-floating-bubble/examples/*/src-tauri/gen/
+
 # Flatpak build artifacts
 .flatpak-builder/
 flatpak-build/
