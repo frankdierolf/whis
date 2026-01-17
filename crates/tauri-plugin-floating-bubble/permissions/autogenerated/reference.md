@@ -235,32 +235,6 @@ Denies the request_overlay_permission command without any pre-configured scope.
 <tr>
 <td>
 
-`floating-bubble:allow-set-bubble-recording`
-
-</td>
-<td>
-
-Enables the set_bubble_recording command without any pre-configured scope.
-
-</td>
-</tr>
-
-<tr>
-<td>
-
-`floating-bubble:deny-set-bubble-recording`
-
-</td>
-<td>
-
-Denies the set_bubble_recording command without any pre-configured scope.
-
-</td>
-</tr>
-
-<tr>
-<td>
-
 `floating-bubble:allow-set-bubble-state`
 
 </td>

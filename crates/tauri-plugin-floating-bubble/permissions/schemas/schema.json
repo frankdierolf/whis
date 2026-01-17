@@ -391,18 +391,6 @@
           "markdownDescription": "Denies the request_overlay_permission command without any pre-configured scope."
         },
         {
-          "description": "Enables the set_bubble_recording command without any pre-configured scope.",
-          "type": "string",
-          "const": "allow-set-bubble-recording",
-          "markdownDescription": "Enables the set_bubble_recording command without any pre-configured scope."
-        },
-        {
-          "description": "Denies the set_bubble_recording command without any pre-configured scope.",
-          "type": "string",
-          "const": "deny-set-bubble-recording",
-          "markdownDescription": "Denies the set_bubble_recording command without any pre-configured scope."
-        },
-        {
           "description": "Enables the set_bubble_state command without any pre-configured scope.",
           "type": "string",
           "const": "allow-set-bubble-state",
