@@ -34,6 +34,23 @@ class StateConfig {
 }
 
 /**
+ * Content for a notification.
+ */
+@InvokeArg
+class NotificationContent {
+    var title: String = ""
+    var text: String = ""
+}
+
+/**
+ * Configuration for notifications at different states.
+ */
+@InvokeArg
+class NotificationConfig {
+    var stateNotifications: Map<String, NotificationContent>? = null
+}
+
+/**
  * Options for showing the floating bubble.
  */
 @InvokeArg
@@ -44,6 +61,7 @@ class BubbleOptions {
     var iconResourceName: String? = null
     var background: String = "#1C1C1C"
     var states: Map<String, StateConfig>? = null
+    var notifications: NotificationConfig? = null
 }
 
 /**
@@ -75,9 +93,9 @@ class FloatingBubblePlugin(private val activity: Activity) : Plugin(activity) {
         @Volatile
         var isActivityResumed: Boolean = false
 
-        // Track if native recording is active (when app is backgrounded)
+        // Track if native capture is active (when app is backgrounded)
         @Volatile
-        var isNativeRecording: Boolean = false
+        var isNativeCapture: Boolean = false
 
         // Reference to the plugin instance for sending events from the service
         @Volatile
@@ -135,64 +153,108 @@ class FloatingBubblePlugin(private val activity: Activity) : Plugin(activity) {
         }
 
         /**
-         * Start native audio recording.
+         * Start native audio capture.
          * Called when bubble is clicked while app is backgrounded.
          */
-        fun startNativeRecording() {
-            Log.d(TAG, "startNativeRecording called")
-            FloatingBubbleService.startRecording()
+        fun startNativeCapture() {
+            Log.d(TAG, "startNativeCapture called")
+            FloatingBubbleService.startCapture()
         }
 
         /**
-         * Stop native audio recording.
+         * Stop native audio capture.
          */
-        fun stopNativeRecording() {
-            Log.d(TAG, "stopNativeRecording called")
-            FloatingBubbleService.stopRecording()
+        fun stopNativeCapture() {
+            Log.d(TAG, "stopNativeCapture called")
+            FloatingBubbleService.stopCapture()
         }
 
         /**
-         * Sync native recording state to frontend when app resumes.
+         * Sync native capture state to frontend when app resumes.
          */
-        fun syncNativeRecordingState() {
-            if (!isNativeRecording) return
+        fun syncNativeCaptureState() {
+            if (!isNativeCapture) return
 
             val webView = webViewInstance ?: return
-            Log.d(TAG, "Syncing native recording state to frontend")
+            Log.d(TAG, "Syncing native capture state to frontend")
 
             Handler(Looper.getMainLooper()).post {
                 try {
                     val js = """
                         (function() {
-                            console.log('[FloatingBubble] Syncing native recording state');
-                            window.dispatchEvent(new CustomEvent('native-recording-active', {
-                                detail: { isRecording: true }
+                            console.log('[FloatingBubble] Syncing native capture state');
+                            window.dispatchEvent(new CustomEvent('native-capture-active', {
+                                detail: { isCapturing: true }
                             }));
                         })();
                     """.trimIndent()
                     webView.evaluateJavascript(js, null)
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error syncing native recording state", e)
+                    Log.e(TAG, "Error syncing native capture state", e)
                 }
             }
+        }
+
+        /**
+         * Emit capture-start event to TypeScript listeners.
+         */
+        fun emitCaptureStart() {
+            emitTauriEvent("floating-bubble://capture-start", "capture-start")
+        }
+
+        /**
+         * Emit capture data event to TypeScript listeners.
+         */
+        fun emitCaptureData(type: String, samples: FloatArray) {
+            val webView = webViewInstance
+            if (webView == null) {
+                Log.w(TAG, "emitCaptureData: WebView is null")
+                return
+            }
+
+            val samplesJson = samples.joinToString(",") { it.toString() }
+            Handler(Looper.getMainLooper()).post {
+                try {
+                    val js = """
+                        (function() {
+                            if (window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke) {
+                                window.__TAURI_INTERNALS__.invoke('plugin:event|emit', {
+                                    event: 'floating-bubble://data',
+                                    payload: { type: '$type', samples: [$samplesJson] }
+                                }).catch(function(e) { console.error('Failed to emit data event:', e); });
+                            }
+                        })();
+                    """.trimIndent()
+                    webView.evaluateJavascript(js, null)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error emitting capture data event", e)
+                }
+            }
+        }
+
+        /**
+         * Emit capture-stop event to TypeScript listeners.
+         */
+        fun emitCaptureStop() {
+            emitTauriEvent("floating-bubble://capture-stop", "capture-stop")
         }
     }
     
     /**
-     * JavaScript bridge for recording callbacks.
+     * JavaScript bridge for capture callbacks.
      * Allows JS to call native methods when async operations complete.
      */
-    private inner class RecordingBridge {
+    private inner class NativeBridge {
         @android.webkit.JavascriptInterface
-        fun onBackendReady() {
-            Log.d(TAG, "RecordingBridge: Backend ready callback received")
-            FloatingBubbleService.onBackendReady()
+        fun onReady() {
+            Log.d(TAG, "NativeBridge: Ready callback received")
+            FloatingBubbleService.onReady()
         }
 
         @android.webkit.JavascriptInterface
-        fun onChunksFlushed() {
-            Log.d(TAG, "RecordingBridge: Chunks flushed callback received")
-            FloatingBubbleService.onChunksFlushed()
+        fun onFlushed() {
+            Log.d(TAG, "NativeBridge: Flushed callback received")
+            FloatingBubbleService.onFlushed()
         }
     }
 
@@ -200,8 +262,8 @@ class FloatingBubblePlugin(private val activity: Activity) : Plugin(activity) {
         super.load(webView)
         pluginInstance = this
         webViewInstance = webView
-        // Register JavaScript interface for recording callbacks
-        webView.addJavascriptInterface(RecordingBridge(), "WhisRecordingBridge")
+        // Register JavaScript interface for capture callbacks
+        webView.addJavascriptInterface(NativeBridge(), "FloatingBubbleBridge")
     }
 
     override fun onResume() {
@@ -209,8 +271,8 @@ class FloatingBubblePlugin(private val activity: Activity) : Plugin(activity) {
         isActivityResumed = true
         Log.d(TAG, "Activity resumed - WebView active")
 
-        // Sync native recording state to frontend if active
-        syncNativeRecordingState()
+        // Sync native capture state to frontend if active
+        syncNativeCaptureState()
     }
 
     override fun onPause() {
@@ -242,10 +304,12 @@ class FloatingBubblePlugin(private val activity: Activity) : Plugin(activity) {
             FloatingBubbleService.bubbleStartX = args.startX
             FloatingBubbleService.bubbleStartY = args.startY
             FloatingBubbleService.defaultIconResourceName = args.iconResourceName
-            FloatingBubbleService.backgroundColor = Color.parseColor(args.background)
+            FloatingBubbleService.backgroundColor = parseColor(args.background, "#1C1C1C")
             FloatingBubbleService.stateConfigs = args.states ?: emptyMap()
+            FloatingBubbleService.notificationConfig = args.notifications
 
             Log.d(TAG, "showBubble - stateConfigs set to service: ${FloatingBubbleService.stateConfigs.size} states")
+            Log.d(TAG, "showBubble - notificationConfig: ${args.notifications?.stateNotifications?.size ?: 0} states")
 
             // Start the floating bubble service
             val intent = Intent(activity, FloatingBubbleService::class.java)

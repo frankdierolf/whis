@@ -59,6 +59,7 @@ class FloatingBubbleService : Service() {
         var defaultIconResourceName: String? = null
         var backgroundColor: Int = Color.parseColor("#1C1C1C")
         var stateConfigs: Map<String, StateConfig> = emptyMap()
+        var notificationConfig: NotificationConfig? = null
 
         // Reference to the current service instance for state updates
         @Volatile
@@ -105,30 +106,30 @@ class FloatingBubbleService : Service() {
         }
 
         /**
-         * Start native audio recording.
+         * Start native audio capture.
          */
-        fun startRecording() {
-            withServiceOnMain("startRecording") { startNativeRecording() }
+        fun startCapture() {
+            withServiceOnMain("startCapture") { startNativeCapture() }
         }
 
         /**
-         * Stop native audio recording.
+         * Stop native audio capture.
          */
-        fun stopRecording() {
-            withServiceOnMain("stopRecording") { stopNativeRecording() }
+        fun stopCapture() {
+            withServiceOnMain("stopCapture") { stopNativeCapture() }
         }
 
         /**
-         * Called from JavascriptInterface when backend is ready for audio.
+         * Called from JavascriptInterface when consumer is ready for data.
          */
-        fun onBackendReady() {
-            withServiceOnMain { executePendingRecordingCallback() }
+        fun onReady() {
+            withServiceOnMain { executePendingCaptureCallback() }
         }
 
         /**
-         * Called from JavascriptInterface when all chunks have been flushed.
+         * Called from JavascriptInterface when all data has been flushed.
          */
-        fun onChunksFlushed() {
+        fun onFlushed() {
             withServiceOnMain { executePendingStopCallback() }
         }
     }
@@ -145,30 +146,30 @@ class FloatingBubbleService : Service() {
     private var closeZoneVisible = false
     private var closeZoneActivated = false
 
-    // Native audio recording
+    // Native audio capture
     private var audioRecord: AudioRecord? = null
-    private var recordingThread: Thread? = null
+    private var captureThread: Thread? = null
     @Volatile
-    private var isRecording = false
+    private var isCapturing = false
 
-    // Pending callback to start recording thread after backend is ready
+    // Pending callback to start capture thread after consumer is ready
     @Volatile
-    private var pendingRecordingCallback: (() -> Unit)? = null
+    private var pendingCaptureCallback: (() -> Unit)? = null
 
-    // Pending callback for when chunks are flushed before stopping
+    // Pending callback for when data is flushed before stopping
     @Volatile
     private var pendingStopCallback: (() -> Unit)? = null
 
-    // Timeout handler for backend ready callback
-    private val backendReadyHandler = Handler(Looper.getMainLooper())
-    private val backendReadyTimeoutRunnable = Runnable {
-        Log.w(TAG, "Backend ready timeout - starting recording thread anyway")
-        executePendingRecordingCallback()
+    // Timeout handler for ready callback
+    private val readyTimeoutHandler = Handler(Looper.getMainLooper())
+    private val readyTimeoutRunnable = Runnable {
+        Log.w(TAG, "Ready timeout - starting capture thread anyway")
+        executePendingCaptureCallback()
     }
 
     // Timeout handler for flush callback
     private val flushTimeoutRunnable = Runnable {
-        Log.w(TAG, "Flush timeout - stopping recording anyway")
+        Log.w(TAG, "Flush timeout - stopping capture anyway")
         executePendingStopCallback()
     }
 
@@ -189,20 +190,24 @@ class FloatingBubbleService : Service() {
     override fun onDestroy() {
         super.onDestroy()
 
-        // Stop native recording if active
-        if (isRecording) {
-            Log.d(TAG, "Service destroying - stopping native recording")
-            isRecording = false
+        // Clean up timeout handlers to prevent memory leaks
+        readyTimeoutHandler.removeCallbacks(readyTimeoutRunnable)
+        readyTimeoutHandler.removeCallbacks(flushTimeoutRunnable)
+
+        // Stop native capture if active
+        if (isCapturing) {
+            Log.d(TAG, "Service destroying - stopping native capture")
+            isCapturing = false
             try {
-                recordingThread?.join(500)
+                captureThread?.join(500)
             } catch (e: InterruptedException) {
                 // Ignore
             }
-            recordingThread = null
+            captureThread = null
             audioRecord?.stop()
             audioRecord?.release()
             audioRecord = null
-            FloatingBubblePlugin.isNativeRecording = false
+            FloatingBubblePlugin.isNativeCapture = false
         }
 
         instance = null
@@ -586,12 +591,12 @@ class FloatingBubbleService : Service() {
             Log.d(TAG, "App in foreground - emitting click event")
             FloatingBubblePlugin.invokeBubbleClick()
         } else {
-            // App backgrounded - toggle native recording
-            Log.d(TAG, "App backgrounded - toggling native recording")
-            if (FloatingBubblePlugin.isNativeRecording) {
-                stopNativeRecording()
+            // App backgrounded - toggle native capture
+            Log.d(TAG, "App backgrounded - toggling native capture")
+            if (FloatingBubblePlugin.isNativeCapture) {
+                stopNativeCapture()
             } else {
-                startNativeRecording()
+                startNativeCapture()
             }
         }
     }
@@ -599,10 +604,10 @@ class FloatingBubbleService : Service() {
     private fun handleCloseBubble() {
         Log.d(TAG, "handleCloseBubble: Drag-to-close detected")
 
-        // Stop native recording if active
-        if (FloatingBubblePlugin.isNativeRecording) {
-            Log.d(TAG, "Stopping native recording before close")
-            stopNativeRecording()
+        // Stop native capture if active
+        if (FloatingBubblePlugin.isNativeCapture) {
+            Log.d(TAG, "Stopping native capture before close")
+            stopNativeCapture()
         }
 
         FloatingBubblePlugin.invokeBubbleClose()
@@ -677,63 +682,63 @@ class FloatingBubbleService : Service() {
     }
 
     /**
-     * Execute the pending recording callback if one exists.
-     * Called when backend signals ready via JavascriptInterface.
+     * Execute the pending capture callback if one exists.
+     * Called when consumer signals ready via JavascriptInterface.
      */
-    private fun executePendingRecordingCallback() {
-        backendReadyHandler.removeCallbacks(backendReadyTimeoutRunnable)
-        val callback = pendingRecordingCallback
-        pendingRecordingCallback = null
+    private fun executePendingCaptureCallback() {
+        readyTimeoutHandler.removeCallbacks(readyTimeoutRunnable)
+        val callback = pendingCaptureCallback
+        pendingCaptureCallback = null
         if (callback != null) {
-            Log.d(TAG, "Executing pending recording callback - backend is ready")
+            Log.d(TAG, "Executing pending capture callback - consumer is ready")
             callback()
         }
     }
 
     /**
      * Execute the pending stop callback if one exists.
-     * Called when all audio chunks have been flushed via JavascriptInterface.
+     * Called when all data has been flushed via JavascriptInterface.
      */
     private fun executePendingStopCallback() {
-        backendReadyHandler.removeCallbacks(flushTimeoutRunnable)
+        readyTimeoutHandler.removeCallbacks(flushTimeoutRunnable)
         val callback = pendingStopCallback
         pendingStopCallback = null
         if (callback != null) {
-            Log.d(TAG, "Executing pending stop callback - chunks flushed")
+            Log.d(TAG, "Executing pending stop callback - data flushed")
             callback()
         }
     }
 
     /**
-     * Start recording audio natively.
+     * Start capturing audio natively.
      * Called when bubble is tapped while app is backgrounded.
-     * Waits for backend to be ready before sending audio chunks.
+     * Emits capture-start event and waits for consumer to signal ready.
      */
-    fun startNativeRecording() {
-        if (isRecording) {
-            Log.d(TAG, "startNativeRecording: Already recording")
+    fun startNativeCapture() {
+        if (isCapturing) {
+            Log.d(TAG, "startNativeCapture: Already capturing")
             return
         }
 
         if (!initAudioRecord()) {
-            Log.e(TAG, "startNativeRecording: Failed to initialize AudioRecord")
+            Log.e(TAG, "startNativeCapture: Failed to initialize AudioRecord")
             return
         }
 
-        isRecording = true
+        isCapturing = true
         audioRecord?.startRecording()
 
         // Update bubble state immediately
-        updateState("recording")
-        FloatingBubblePlugin.isNativeRecording = true
+        updateState("capturing")
+        FloatingBubblePlugin.isNativeCapture = true
 
-        // Store the callback to start recording thread
-        pendingRecordingCallback = {
-            recordingThread = Thread {
-                Log.d(TAG, "Recording thread started")
+        // Store the callback to start capture thread
+        pendingCaptureCallback = {
+            captureThread = Thread {
+                Log.d(TAG, "Capture thread started")
                 val buffer = FloatArray(CHUNK_SIZE)
                 var chunkCount = 0
-                while (isRecording) {
+                while (isCapturing) {
                     val read = audioRecord?.read(buffer, 0, CHUNK_SIZE, AudioRecord.READ_BLOCKING) ?: 0
                     if (read > 0) {
                         chunkCount++
@@ -754,47 +759,48 @@ class FloatingBubbleService : Service() {
                             Log.w(TAG, "Audio chunk $chunkCount appears to be silence (max < 0.001)")
                         }
 
-                        sendAudioChunkToBackend(buffer.copyOf(read))
+                        // Emit data event instead of direct command invocation
+                        emitCaptureData(buffer.copyOf(read))
                     } else {
                         Log.w(TAG, "AudioRecord.read returned $read")
                     }
                 }
-                Log.d(TAG, "Recording thread stopped, sent $chunkCount chunks")
+                Log.d(TAG, "Capture thread stopped, sent $chunkCount chunks")
             }.apply {
-                name = "NativeAudioRecorder"
+                name = "NativeAudioCapture"
                 start()
             }
         }
 
-        // Notify backend - it will call back via JavascriptInterface when ready
-        notifyRecordingStartedWithBridgeCallback()
+        // Emit capture-start event - consumer should call signalReady() when ready
+        notifyCaptureStarted()
 
         // Timeout protection - start anyway after 3 seconds
-        backendReadyHandler.postDelayed(backendReadyTimeoutRunnable, 3000L)
+        readyTimeoutHandler.postDelayed(readyTimeoutRunnable, 3000L)
 
-        Log.d(TAG, "Native recording started, waiting for backend ready callback")
+        Log.d(TAG, "Native capture started, waiting for ready callback")
     }
 
     /**
-     * Stop recording audio.
-     * Uses two-phase synchronization to ensure all audio chunks are processed
-     * before calling stop_recording on the backend.
+     * Stop capturing audio.
+     * Uses two-phase synchronization to ensure all data is processed
+     * before emitting capture-stop event.
      */
-    fun stopNativeRecording() {
-        if (!isRecording) {
-            Log.d(TAG, "stopNativeRecording: Not recording")
+    fun stopNativeCapture() {
+        if (!isCapturing) {
+            Log.d(TAG, "stopNativeCapture: Not capturing")
             return
         }
 
-        isRecording = false
+        isCapturing = false
 
-        // Wait for recording thread to finish posting chunks
+        // Wait for capture thread to finish posting data
         try {
-            recordingThread?.join(1000)
+            captureThread?.join(1000)
         } catch (e: InterruptedException) {
-            Log.w(TAG, "Interrupted while waiting for recording thread", e)
+            Log.w(TAG, "Interrupted while waiting for capture thread", e)
         }
-        recordingThread = null
+        captureThread = null
 
         // Stop and release AudioRecord
         try {
@@ -805,67 +811,40 @@ class FloatingBubbleService : Service() {
         audioRecord?.release()
         audioRecord = null
 
-        // Store callback to finalize after chunks are flushed
+        // Store callback to finalize after data is flushed
         pendingStopCallback = {
-            notifyRecordingStopped()
+            notifyCaptureStopped()
             updateState("processing")
-            FloatingBubblePlugin.isNativeRecording = false
-            Log.d(TAG, "Native recording stopped")
+            FloatingBubblePlugin.isNativeCapture = false
+            Log.d(TAG, "Native capture stopped")
         }
 
         // Send flush marker and wait for callback
-        flushPendingChunks()
+        flushPendingData()
 
         // Timeout protection - stop anyway after 2 seconds
-        backendReadyHandler.postDelayed(flushTimeoutRunnable, 2000L)
+        readyTimeoutHandler.postDelayed(flushTimeoutRunnable, 2000L)
 
-        Log.d(TAG, "Waiting for chunks to flush before stopping")
+        Log.d(TAG, "Waiting for data to flush before stopping")
     }
 
     /**
-     * Send audio samples to Rust backend via Tauri.
+     * Emit capture data event with audio samples.
      */
-    private fun sendAudioChunkToBackend(samples: FloatArray) {
-        val webView = FloatingBubblePlugin.webViewInstance
-        if (webView == null) {
-            Log.w(TAG, "sendAudioChunkToBackend: WebView not available")
-            return
-        }
-
-        Log.d(TAG, "sendAudioChunkToBackend: Sending ${samples.size} samples")
-
-        // Convert samples to JSON array string
-        val samplesJson = samples.joinToString(",") { it.toString() }
-        val js = """
-            (function() {
-                if (window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke) {
-                    window.__TAURI_INTERNALS__.invoke('send_audio_chunk', {
-                        samples: [$samplesJson]
-                    }).catch(function(e) {
-                        console.error('Failed to send audio chunk:', e);
-                    });
-                }
-            })();
-        """.trimIndent()
-
-        Handler(Looper.getMainLooper()).post {
-            try {
-                webView.evaluateJavascript(js, null)
-            } catch (e: Exception) {
-                Log.e(TAG, "Error sending audio chunk", e)
-            }
-        }
+    private fun emitCaptureData(samples: FloatArray) {
+        Log.d(TAG, "emitCaptureData: Emitting ${samples.size} samples")
+        FloatingBubblePlugin.emitCaptureData("audio", samples)
     }
 
     /**
-     * Send a flush marker to ensure all pending chunks are processed.
-     * The marker travels through the same JS queue as audio chunks,
-     * so when it executes, all prior chunks have been sent.
+     * Send a flush marker to ensure all pending data is processed.
+     * The marker travels through the same JS queue as data events,
+     * so when it executes, all prior events have been sent.
      */
-    private fun flushPendingChunks() {
+    private fun flushPendingData() {
         val webView = FloatingBubblePlugin.webViewInstance
         if (webView == null) {
-            Log.w(TAG, "flushPendingChunks: WebView not available")
+            Log.w(TAG, "flushPendingData: WebView not available")
             executePendingStopCallback()
             return
         }
@@ -873,10 +852,10 @@ class FloatingBubbleService : Service() {
         // This JS executes in order after all pending evaluateJavascript calls
         val js = """
             (function() {
-                console.log('[FloatingBubble] Flushing pending chunks');
+                console.log('[FloatingBubble] Flushing pending data');
                 // By the time this runs, all prior evaluateJavascript calls have executed
-                if (window.WhisRecordingBridge && window.WhisRecordingBridge.onChunksFlushed) {
-                    window.WhisRecordingBridge.onChunksFlushed();
+                if (window.FloatingBubbleBridge && window.FloatingBubbleBridge.onFlushed) {
+                    window.FloatingBubbleBridge.onFlushed();
                 }
             })();
         """.trimIndent()
@@ -885,101 +864,28 @@ class FloatingBubbleService : Service() {
             try {
                 webView.evaluateJavascript(js, null)
             } catch (e: Exception) {
-                Log.e(TAG, "Error flushing chunks", e)
+                Log.e(TAG, "Error flushing data", e)
                 executePendingStopCallback()
             }
         }
     }
 
     /**
-     * Notify backend that native recording started.
-     * Uses JavascriptInterface callback to signal when backend is ready.
+     * Emit capture-start event.
+     * Consumer should call signalReady() via FloatingBubbleBridge.onReady() when ready.
      */
-    private fun notifyRecordingStartedWithBridgeCallback() {
-        val webView = FloatingBubblePlugin.webViewInstance
-        if (webView == null) {
-            Log.w(TAG, "notifyRecordingStartedWithBridgeCallback: WebView not available")
-            executePendingRecordingCallback()
-            return
-        }
-
-        val js = """
-            (function() {
-                console.log('[FloatingBubble] Native recording starting...');
-                if (window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke) {
-                    window.__TAURI_INTERNALS__.invoke('start_recording')
-                        .then(function() {
-                            console.log('[FloatingBubble] Backend ready, calling native bridge');
-                            if (window.WhisRecordingBridge && window.WhisRecordingBridge.onBackendReady) {
-                                window.WhisRecordingBridge.onBackendReady();
-                            } else {
-                                console.error('[FloatingBubble] WhisRecordingBridge not available');
-                            }
-                        })
-                        .catch(function(e) {
-                            console.error('start_recording failed:', e);
-                            // Still call bridge to unblock recording
-                            if (window.WhisRecordingBridge && window.WhisRecordingBridge.onBackendReady) {
-                                window.WhisRecordingBridge.onBackendReady();
-                            }
-                        });
-                } else {
-                    console.error('[FloatingBubble] TAURI_INTERNALS not available');
-                }
-            })();
-        """.trimIndent()
-
-        Handler(Looper.getMainLooper()).post {
-            try {
-                webView.evaluateJavascript(js, null)
-            } catch (e: Exception) {
-                Log.e(TAG, "Error notifying recording started", e)
-                executePendingRecordingCallback()
-            }
-        }
+    private fun notifyCaptureStarted() {
+        Log.d(TAG, "notifyCaptureStarted: Emitting capture-start event")
+        FloatingBubblePlugin.emitCaptureStart()
     }
 
     /**
-     * Notify backend to finalize transcription.
-     * Resets bubble state to idle when transcription completes.
+     * Emit capture-stop event.
+     * Consumer should handle processing completion and reset bubble state.
      */
-    private fun notifyRecordingStopped() {
-        val webView = FloatingBubblePlugin.webViewInstance
-        if (webView == null) {
-            Log.w(TAG, "notifyRecordingStopped: WebView not available")
-            return
-        }
-
-        val js = """
-            (function() {
-                console.log('[FloatingBubble] Native recording stopped');
-                if (window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke) {
-                    window.__TAURI_INTERNALS__.invoke('stop_recording')
-                        .then(function(result) {
-                            console.log('Transcription result:', result);
-                            // Reset bubble state to idle after transcription completes
-                            window.__TAURI_INTERNALS__.invoke('plugin:floating-bubble|set_bubble_state', {
-                                state: 'idle'
-                            });
-                        })
-                        .catch(function(e) {
-                            console.error('stop_recording failed:', e);
-                            // Also reset to idle on error
-                            window.__TAURI_INTERNALS__.invoke('plugin:floating-bubble|set_bubble_state', {
-                                state: 'idle'
-                            });
-                        });
-                }
-            })();
-        """.trimIndent()
-
-        Handler(Looper.getMainLooper()).post {
-            try {
-                webView.evaluateJavascript(js, null)
-            } catch (e: Exception) {
-                Log.e(TAG, "Error notifying recording stopped", e)
-            }
-        }
+    private fun notifyCaptureStopped() {
+        Log.d(TAG, "notifyCaptureStopped: Emitting capture-stop event")
+        FloatingBubblePlugin.emitCaptureStop()
     }
 
     /**
@@ -1010,10 +916,20 @@ class FloatingBubbleService : Service() {
     }
 
     private fun createNotification(): Notification {
-        val (title, text) = when (currentStateName) {
-            "recording" -> "Recording..." to "Tap bubble to stop"
-            "processing" -> "Processing..." to "Transcribing your voice"
-            else -> "Floating Bubble" to "Tap the bubble to interact"
+        // Check for configured notification content first
+        val configuredContent = Companion.notificationConfig
+            ?.stateNotifications
+            ?.get(currentStateName)
+
+        val (title, text) = if (configuredContent != null) {
+            configuredContent.title to configuredContent.text
+        } else {
+            // Generic defaults
+            when (currentStateName) {
+                "capturing" -> "Capturing..." to "Tap bubble to stop"
+                "processing" -> "Processing..." to "Working on your input"
+                else -> "Floating Bubble" to "Tap the bubble to interact"
+            }
         }
 
         return NotificationCompat.Builder(this, CHANNEL_ID)

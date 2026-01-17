@@ -3,7 +3,7 @@ import type { PostProcessor, Provider, SelectOption, TranscriptionMethod } from 
 import { invoke } from '@tauri-apps/api/core'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import * as bubble from 'tauri-plugin-floating-bubble'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import AppInput from '../components/AppInput.vue'
 import AppSelect from '../components/AppSelect.vue'
 import ToggleSwitch from '../components/ToggleSwitch.vue'
@@ -254,7 +254,7 @@ async function handleFloatingBubbleToggle(enabled: boolean) {
 }
 
 // Whis bubble configuration
-const BUBBLE_CONFIG = {
+const BUBBLE_CONFIG: bubble.BubbleOptions = {
   size: 60,
   startX: 0,
   startY: 200,
@@ -262,8 +262,15 @@ const BUBBLE_CONFIG = {
   background: '#1C1C1C',
   states: {
     idle: { iconResourceName: 'ic_whis_logo_idle' },
-    recording: { iconResourceName: 'ic_whis_logo_recording' },
+    capturing: { iconResourceName: 'ic_whis_logo_recording' },
     processing: { iconResourceName: 'ic_whis_logo_processing' },
+  },
+  notifications: {
+    stateNotifications: {
+      idle: { title: 'Whis Ready', text: 'Tap bubble to transcribe' },
+      capturing: { title: 'Recording...', text: 'Tap bubble to stop' },
+      processing: { title: 'Transcribing...', text: 'Processing your audio' },
+    },
   },
 }
 
@@ -289,15 +296,27 @@ async function hideBubble() {
   }
 }
 
+// Visibility change handler for permission re-checks
+let visibilityCleanup: (() => void) | undefined
+
+async function handleVisibilityChange() {
+  if (document.visibilityState === 'visible') {
+    await checkOverlayPermission()
+    await checkMicrophonePermission()
+  }
+}
+
 // Re-check permissions when app regains focus (user may have granted permission)
 if (typeof document !== 'undefined') {
-  document.addEventListener('visibilitychange', async () => {
-    if (document.visibilityState === 'visible') {
-      await checkOverlayPermission()
-      await checkMicrophonePermission()
-    }
-  })
+  document.addEventListener('visibilitychange', handleVisibilityChange)
+  visibilityCleanup = () => {
+    document.removeEventListener('visibilitychange', handleVisibilityChange)
+  }
 }
+
+onUnmounted(() => {
+  visibilityCleanup?.()
+})
 </script>
 
 <template>

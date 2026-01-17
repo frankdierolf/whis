@@ -47,6 +47,11 @@ pub struct BubbleOptions {
     /// Example: { "idle": { iconResourceName: "ic_idle" }, "active": { iconResourceName: "ic_active" } }
     #[serde(default)]
     pub states: HashMap<String, StateConfig>,
+
+    /// Notification configuration for different states.
+    /// Allows customizing the foreground service notification text.
+    #[serde(default)]
+    pub notifications: Option<NotificationConfig>,
 }
 
 fn default_size() -> i32 {
@@ -81,4 +86,23 @@ pub struct PermissionResponse {
 pub struct StateOptions {
     /// The state name to set. Must be a key in the states map provided to showBubble.
     pub state: String,
+}
+
+/// Content for a notification.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct NotificationContent {
+    /// Title of the notification.
+    pub title: String,
+    /// Text/body of the notification.
+    pub text: String,
+}
+
+/// Configuration for notifications at different states.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct NotificationConfig {
+    /// Notification content for each state.
+    /// Keys are state names (e.g., "idle", "capturing", "processing").
+    pub state_notifications: HashMap<String, NotificationContent>,
 }

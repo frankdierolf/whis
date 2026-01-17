@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import type { BubbleCloseEvent } from 'tauri-plugin-floating-bubble'
+import type { BubbleCloseEvent, CaptureDataEvent } from 'tauri-plugin-floating-bubble'
 import { invoke } from '@tauri-apps/api/core'
-import { hideBubble, onBubbleClick, onBubbleClose, setBubbleState } from 'tauri-plugin-floating-bubble'
+import { hideBubble, onBubbleClick, onBubbleClose, onCaptureData, onCaptureStart, onCaptureStop, setBubbleState, signalFlushed, signalReady } from 'tauri-plugin-floating-bubble'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { headerStore } from './stores/header'
@@ -14,6 +14,9 @@ const loaded = computed(() => settingsStore.state.loaded)
 // Event cleanup functions
 let unlistenBubbleClick: (() => void) | null = null
 let unlistenBubbleClose: (() => void) | null = null
+let unlistenCaptureStart: (() => void) | null = null
+let unlistenCaptureData: (() => void) | null = null
+let unlistenCaptureStop: (() => void) | null = null
 let unlistenVisibility: (() => void) | null = null
 const sidebarOpen = ref(false)
 
@@ -46,7 +49,7 @@ function getBubbleState(): string {
   const state = recordingStore.state
 
   if (state.isRecording)
-    return 'recording'
+    return 'capturing'
   if (state.isTranscribing || state.isPostProcessing)
     return 'processing'
   return 'idle'
@@ -124,6 +127,54 @@ onMounted(async () => {
     // Plugin may not be available on this platform
   }
 
+  // Listen for native capture events (background recording via floating bubble)
+  try {
+    // Capture started - initialize backend and signal ready
+    unlistenCaptureStart = await onCaptureStart(async () => {
+      try {
+        await invoke('start_recording')
+        signalReady()
+      }
+      catch (error) {
+        console.error('[App] Failed to start recording:', error)
+        signalReady() // Signal anyway to unblock native layer
+      }
+    })
+
+    // Capture data - forward audio chunks to backend
+    unlistenCaptureData = await onCaptureData(async (event: CaptureDataEvent) => {
+      if (event.type === 'audio' && event.samples) {
+        try {
+          await invoke('send_audio_chunk', { samples: event.samples })
+        }
+        catch (error) {
+          console.error('[App] Failed to send audio chunk:', error)
+        }
+      }
+    })
+
+    // Capture stopped - signal flushed and stop recording
+    unlistenCaptureStop = await onCaptureStop(async () => {
+      signalFlushed()
+      try {
+        await invoke('stop_recording')
+        // Reset bubble state to idle after transcription completes
+        await setBubbleState('idle')
+      }
+      catch (error) {
+        console.error('[App] Failed to stop recording:', error)
+        // Also reset to idle on error to avoid stuck state
+        try {
+          await setBubbleState('idle')
+        }
+        catch {}
+      }
+    })
+  }
+  catch {
+    // Plugin may not be available on this platform
+  }
+
   // Stop recording when app goes to background (mobile-specific)
   document.addEventListener('visibilitychange', handleVisibilityChange)
   unlistenVisibility = () => {
@@ -147,6 +198,9 @@ onMounted(async () => {
 onUnmounted(() => {
   unlistenBubbleClick?.()
   unlistenBubbleClose?.()
+  unlistenCaptureStart?.()
+  unlistenCaptureData?.()
+  unlistenCaptureStop?.()
   unlistenVisibility?.()
   recordingStore.cleanup()
 })

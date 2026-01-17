@@ -9,9 +9,39 @@ export interface StateConfig {
    * Icon resource name for this state (optional).
    * If not provided, uses the default icon from BubbleOptions.
    * Android drawable resource name (without "R.drawable." prefix).
-   * Example: "ic_recording"
+   * Example: "ic_capturing"
    */
   iconResourceName?: string
+}
+
+/**
+ * Content for a notification.
+ */
+export interface NotificationContent {
+  /** Title of the notification */
+  title: string
+  /** Text/body of the notification */
+  text: string
+}
+
+/**
+ * Configuration for notifications at different states.
+ */
+export interface NotificationConfig {
+  /**
+   * Notification content for each state.
+   * Keys are state names (e.g., "idle", "capturing", "processing").
+   *
+   * @example
+   * ```typescript
+   * stateNotifications: {
+   *   'idle': { title: 'Ready', text: 'Tap to start' },
+   *   'capturing': { title: 'Capturing...', text: 'Tap to stop' },
+   *   'processing': { title: 'Processing...', text: 'Please wait' }
+   * }
+   * ```
+   */
+  stateNotifications: Record<string, NotificationContent>
 }
 
 /**
@@ -54,12 +84,29 @@ export interface BubbleOptions {
    * ```typescript
    * states: {
    *   'idle': { iconResourceName: 'ic_idle' },
-   *   'recording': { iconResourceName: 'ic_recording' },
+   *   'capturing': { iconResourceName: 'ic_capturing' },
    *   'processing': { iconResourceName: 'ic_processing' }
    * }
    * ```
    */
   states?: Record<string, StateConfig>
+
+  /**
+   * Notification configuration for different states.
+   * Allows customizing the foreground service notification text.
+   *
+   * @example
+   * ```typescript
+   * notifications: {
+   *   stateNotifications: {
+   *     'idle': { title: 'Ready', text: 'Tap bubble to start' },
+   *     'capturing': { title: 'Capturing...', text: 'Tap bubble to stop' },
+   *     'processing': { title: 'Processing...', text: 'Please wait' }
+   *   }
+   * }
+   * ```
+   */
+  notifications?: NotificationConfig
 }
 
 /**
@@ -309,4 +356,196 @@ export async function onBubbleClose(
   return listen(BUBBLE_CLOSE_EVENT, (event) => {
     callback(event.payload as BubbleCloseEvent)
   })
+}
+
+// ========== Capture Events (for background native capture) ==========
+
+/**
+ * The event name used for capture start events.
+ * Emitted when native capture begins (bubble tapped while app is backgrounded).
+ */
+export const CAPTURE_START_EVENT = 'floating-bubble://capture-start'
+
+/**
+ * The event name used for capture data events.
+ * Emitted when capture data (e.g., audio samples) is available.
+ */
+export const CAPTURE_DATA_EVENT = 'floating-bubble://data'
+
+/**
+ * The event name used for capture stop events.
+ * Emitted when native capture ends.
+ */
+export const CAPTURE_STOP_EVENT = 'floating-bubble://capture-stop'
+
+/**
+ * Payload for capture data events.
+ */
+export interface CaptureDataEvent {
+  /** Type of data being captured */
+  type: 'audio'
+  /** Audio samples (for type: 'audio') - float32 values */
+  samples?: number[]
+}
+
+/**
+ * Register a listener for capture start events.
+ *
+ * This is triggered when the user taps the bubble while the app is backgrounded,
+ * starting native audio capture.
+ *
+ * After receiving this event, you should:
+ * 1. Initialize your audio processing pipeline
+ * 2. Call `signalReady()` to tell the native layer to start sending data
+ *
+ * @param callback - Function to call when capture starts
+ * @returns A function to unregister the listener
+ *
+ * @example
+ * ```typescript
+ * import { onCaptureStart, signalReady } from 'tauri-plugin-floating-bubble'
+ *
+ * const unlisten = await onCaptureStart(async () => {
+ *   console.log('Native capture started!')
+ *   // Initialize your audio processing
+ *   await initializeAudioPipeline()
+ *   // Signal that we're ready to receive data
+ *   signalReady()
+ * })
+ * ```
+ */
+export async function onCaptureStart(
+  callback: () => void,
+): Promise<() => void> {
+  return listen(CAPTURE_START_EVENT, () => callback())
+}
+
+/**
+ * Register a listener for capture data events.
+ *
+ * This is triggered when audio data is captured by the native layer.
+ * Data is sent in chunks (typically ~256ms at 16kHz).
+ *
+ * @param callback - Function to call with capture data
+ * @returns A function to unregister the listener
+ *
+ * @example
+ * ```typescript
+ * import { onCaptureData } from 'tauri-plugin-floating-bubble'
+ *
+ * const unlisten = await onCaptureData((event) => {
+ *   if (event.type === 'audio' && event.samples) {
+ *     // Process audio samples (float32 array)
+ *     processAudioSamples(event.samples)
+ *   }
+ * })
+ * ```
+ */
+export async function onCaptureData(
+  callback: (event: CaptureDataEvent) => void,
+): Promise<() => void> {
+  return listen(CAPTURE_DATA_EVENT, (event) => {
+    callback(event.payload as CaptureDataEvent)
+  })
+}
+
+/**
+ * Register a listener for capture stop events.
+ *
+ * This is triggered when native capture ends (bubble tapped again, or drag-to-close).
+ *
+ * After receiving this event, you should:
+ * 1. Finalize your audio processing
+ * 2. Call `signalFlushed()` to tell the native layer all data has been processed
+ * 3. Reset the bubble state to 'idle' when processing completes
+ *
+ * @param callback - Function to call when capture stops
+ * @returns A function to unregister the listener
+ *
+ * @example
+ * ```typescript
+ * import { onCaptureStop, signalFlushed, setBubbleState } from 'tauri-plugin-floating-bubble'
+ *
+ * const unlisten = await onCaptureStop(async () => {
+ *   console.log('Native capture stopped!')
+ *   // Signal that all data has been received
+ *   signalFlushed()
+ *   // Finalize processing
+ *   const result = await finalizeAudioProcessing()
+ *   // Reset bubble state when done
+ *   await setBubbleState('idle')
+ * })
+ * ```
+ */
+export async function onCaptureStop(
+  callback: () => void,
+): Promise<() => void> {
+  return listen(CAPTURE_STOP_EVENT, () => callback())
+}
+
+// ========== Bridge Control Functions ==========
+
+/**
+ * Native bridge interface for synchronization callbacks.
+ * This interface is injected by the Android plugin via JavaScriptInterface.
+ */
+interface NativeBridge {
+  /** Signal that the consumer is ready to receive capture data */
+  onReady(): void
+  /** Signal that all capture data has been processed */
+  onFlushed(): void
+}
+
+declare global {
+  interface Window {
+    /** Native bridge injected by FloatingBubblePlugin */
+    FloatingBubbleBridge?: NativeBridge
+  }
+}
+
+/**
+ * Signal to the native layer that your app is ready to receive capture data.
+ *
+ * Call this after receiving a capture-start event and initializing your
+ * audio processing pipeline. The native layer will wait for this signal
+ * before sending data (with a 3-second timeout as fallback).
+ *
+ * @example
+ * ```typescript
+ * import { onCaptureStart, signalReady } from 'tauri-plugin-floating-bubble'
+ *
+ * await onCaptureStart(async () => {
+ *   await initializeAudioPipeline()
+ *   signalReady()  // Native layer will now start sending data
+ * })
+ * ```
+ */
+export function signalReady(): void {
+  if (typeof window !== 'undefined') {
+    window.FloatingBubbleBridge?.onReady()
+  }
+}
+
+/**
+ * Signal to the native layer that all capture data has been processed.
+ *
+ * Call this after receiving a capture-stop event and confirming all
+ * data has been received. The native layer will wait for this signal
+ * before completing the stop sequence (with a 2-second timeout as fallback).
+ *
+ * @example
+ * ```typescript
+ * import { onCaptureStop, signalFlushed, setBubbleState } from 'tauri-plugin-floating-bubble'
+ *
+ * await onCaptureStop(async () => {
+ *   signalFlushed()  // Confirm all data received
+ *   const result = await processAllAudio()
+ *   await setBubbleState('idle')
+ * })
+ * ```
+ */
+export function signalFlushed(): void {
+  if (typeof window !== 'undefined') {
+    window.FloatingBubbleBridge?.onFlushed()
+  }
 }
