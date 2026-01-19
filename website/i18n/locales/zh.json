@@ -5,7 +5,8 @@
     "cli": "命令行",
     "desktop": "桌面版",
     "mobile": "移动版",
-    "faq": "常见问题"
+    "faq": "常见问题",
+    "blog": "博客"
   },
   "common": {
     "version": "v{version}",
@@ -243,5 +244,11 @@
         "answer": "<strong>Flatpak：</strong> <code>flatpak uninstall ink.whis.Whis</code><br><strong>AppImage：</strong>使用 <code>--uninstall</code> 参数运行，然后删除文件。<br><strong>其他：</strong>删除二进制文件和 <code>~/.config/whis/</code> 文件夹。"
       }
     }
+  },
+  "blog": {
+    "title": "博客 - whis",
+    "subtitle": "更新、教程和见解",
+    "metaDescription": "whis 博客，包含有关 Linux 语音转文字的更新、教程和见解。",
+    "noPosts": "暂无文章，请稍后再来！"
   }
 }

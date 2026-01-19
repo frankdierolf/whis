@@ -5,7 +5,8 @@
     "cli": "CLI",
     "desktop": "デスクトップ",
     "mobile": "モバイル",
-    "faq": "よくある質問"
+    "faq": "よくある質問",
+    "blog": "ブログ"
   },
   "common": {
     "version": "v{version}",
@@ -243,5 +244,11 @@
         "answer": "<strong>Flatpak：</strong><code>flatpak uninstall ink.whis.Whis</code><br><strong>AppImage：</strong><code>--uninstall</code>フラグ付きで実行後、ファイルを削除。<br><strong>その他：</strong>バイナリと<code>~/.config/whis/</code>フォルダを削除。"
       }
     }
+  },
+  "blog": {
+    "title": "ブログ - whis",
+    "subtitle": "最新情報、チュートリアル、ヒント",
+    "metaDescription": "whisブログ。Linux向け音声入力に関する最新情報、チュートリアル、ヒントを掲載。",
+    "noPosts": "まだ記事がありません。後でまたチェックしてください！"
   }
 }

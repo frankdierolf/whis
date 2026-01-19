@@ -46,6 +46,7 @@ const navItems = computed(() => [
   { path: localePath('desktop'), name: 'desktop', label: t('nav.desktop') },
   { path: localePath('mobile'), name: 'mobile', label: t('nav.mobile') },
   { path: localePath('faq'), name: 'faq', label: t('nav.faq') },
+  { path: localePath('blog'), name: 'blog', label: t('nav.blog') },
 ])
 
 function toggleSidebar() {

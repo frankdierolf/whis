@@ -9,7 +9,7 @@ export default defineNuxtConfig({
 
   ssr: true,
 
-  modules: ['@nuxtjs/seo', '@nuxtjs/i18n'],
+  modules: ['@nuxtjs/seo', '@nuxtjs/i18n', '@nuxt/content'],
 
   site: {
     url: 'https://whis.ink',
@@ -18,9 +18,7 @@ export default defineNuxtConfig({
     defaultLocale: 'en',
   },
 
-  sitemap: {
-    strictNuxtContentPaths: true,
-  },
+  sitemap: {},
 
   robots: {
     allow: '/',
@@ -94,9 +92,10 @@ export default defineNuxtConfig({
         '/desktop',
         '/mobile',
         '/faq',
+        '/blog',
         // Localized routes for all other languages
         ...['zh', 'es', 'fr', 'de', 'pt', 'ru', 'ja', 'ko', 'it'].flatMap(locale =>
-          ['/', '/downloads', '/cli', '/desktop', '/mobile', '/faq'].map(path =>
+          ['/', '/downloads', '/cli', '/desktop', '/mobile', '/faq', '/blog'].map(path =>
             `/${locale}${path}`,
           ),
         ),

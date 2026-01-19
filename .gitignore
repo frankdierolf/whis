@@ -25,6 +25,7 @@ dist/
 # Nuxt
 .nuxt/
 .output/
+.data/
 
 # TypeScript build cache
 *.tsbuildinfo
