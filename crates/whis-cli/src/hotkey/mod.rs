@@ -6,7 +6,7 @@
 //! Push-to-talk: Recording starts when hotkey is pressed, stops when released.
 
 use anyhow::Result;
-use std::sync::mpsc::Receiver;
+use tokio::sync::mpsc::UnboundedReceiver;
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 mod unix_like;
@@ -33,7 +33,7 @@ pub struct HotkeyGuard(platform::HotkeyGuard);
 
 /// Setup the hotkey listener for push-to-talk mode.
 /// Returns a receiver for hotkey press/release events and a guard that must be kept alive.
-pub fn setup(hotkey_str: &str) -> Result<(Receiver<HotkeyEvent>, HotkeyGuard)> {
+pub fn setup(hotkey_str: &str) -> Result<(UnboundedReceiver<HotkeyEvent>, HotkeyGuard)> {
     let (rx, guard) = platform::setup(hotkey_str)?;
     Ok((rx, HotkeyGuard(guard)))
 }

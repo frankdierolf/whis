@@ -27,19 +27,17 @@
 //!
 //! # Architecture
 //!
-//! - Polling loop checks IPC server + hotkey channel (non-blocking)
+//! - Event-driven loop using `tokio::select!` (no polling, zero CPU when idle)
 //! - Progressive transcription: audio chunks sent during recording
 //! - Post-processing and clipboard copy on completion
 
 use anyhow::{Context, Result};
-use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex};
-use tokio::time::sleep;
+use tokio::sync::mpsc::UnboundedReceiver;
 
 use crate::app::TranscriptionConfig;
 use crate::hotkey::HotkeyEvent;
 use crate::ipc::{IpcMessage, IpcResponse, IpcServer};
-use std::time::Duration;
 use whis_core::{
     AudioRecorder, DEFAULT_POST_PROCESSING_PROMPT, Settings, TranscriptionProvider,
     copy_to_clipboard, post_process,
@@ -82,13 +80,16 @@ impl Service {
     }
 
     /// Run the service main loop
+    ///
+    /// Uses `tokio::select!` for event-driven operation instead of polling,
+    /// eliminating CPU usage when idle.
     pub async fn run(
         &self,
-        hotkey_rx: Option<Receiver<HotkeyEvent>>,
+        mut hotkey_rx: Option<UnboundedReceiver<HotkeyEvent>>,
         push_to_talk: bool,
     ) -> Result<()> {
         // Create IPC server
-        let ipc_server = IpcServer::new().context("Failed to create IPC server")?;
+        let mut ipc_server = IpcServer::new().context("Failed to create IPC server")?;
 
         // Configure model caching for local transcription in listen mode
         // This respects the user's model_memory settings for speed vs memory tradeoff
@@ -100,23 +101,28 @@ impl Service {
         }
 
         loop {
-            // Check for incoming IPC connections (non-blocking)
-            if let Some(mut conn) = ipc_server.try_accept()? {
-                match conn.receive() {
-                    Ok(message) => {
-                        let response = self.handle_message(message).await;
-                        let _ = conn.send(response);
-                    }
-                    Err(e) => {
-                        eprintln!("Error receiving message: {e}");
-                        let _ = conn.send(IpcResponse::Error(e.to_string()));
+            tokio::select! {
+                // Wait for IPC connection
+                Some(mut conn) = ipc_server.accept() => {
+                    match conn.receive() {
+                        Ok(message) => {
+                            let response = self.handle_message(message).await;
+                            let _ = conn.send(response);
+                        }
+                        Err(e) => {
+                            eprintln!("Error receiving message: {e}");
+                            let _ = conn.send(IpcResponse::Error(e.to_string()));
+                        }
                     }
                 }
-            }
 
-            // Check for hotkey events
-            if let Some(ref rx) = hotkey_rx {
-                if let Ok(event) = rx.try_recv() {
+                // Wait for hotkey event (if hotkey is configured)
+                Some(event) = async {
+                    match &mut hotkey_rx {
+                        Some(rx) => rx.recv().await,
+                        None => std::future::pending().await,
+                    }
+                } => {
                     if push_to_talk {
                         // Push-to-talk mode: press starts, release stops
                         match event {
@@ -135,9 +141,6 @@ impl Service {
                     }
                 }
             }
-
-            // Small sleep to prevent busy waiting
-            sleep(Duration::from_millis(10)).await;
         }
     }
 

@@ -1,5 +1,5 @@
 use anyhow::Result;
-use std::sync::mpsc::Receiver;
+use tokio::sync::mpsc::UnboundedReceiver;
 use whis_core::hotkey::Hotkey;
 
 use super::HotkeyEvent;
@@ -21,9 +21,9 @@ use whis_core::hotkey::lock_or_recover;
 
 pub struct HotkeyGuard;
 
-pub fn setup(hotkey_str: &str) -> Result<(Receiver<HotkeyEvent>, HotkeyGuard)> {
+pub fn setup(hotkey_str: &str) -> Result<(UnboundedReceiver<HotkeyEvent>, HotkeyGuard)> {
     let hotkey = Hotkey::parse(hotkey_str).map_err(|e| anyhow::anyhow!(e))?;
-    let (tx, rx) = std::sync::mpsc::channel();
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
     let tx_release = tx.clone();
 
     std::thread::spawn(move || {

@@ -2,7 +2,7 @@
 
 use anyhow::Result;
 use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState, hotkey::HotKey};
-use std::sync::mpsc::Receiver;
+use tokio::sync::mpsc::UnboundedReceiver;
 
 use super::HotkeyEvent;
 
@@ -10,7 +10,7 @@ pub struct HotkeyGuard {
     _manager: GlobalHotKeyManager,
 }
 
-pub fn setup(hotkey_str: &str) -> Result<(Receiver<HotkeyEvent>, HotkeyGuard)> {
+pub fn setup(hotkey_str: &str) -> Result<(UnboundedReceiver<HotkeyEvent>, HotkeyGuard)> {
     let converted = convert_to_global_hotkey_format(hotkey_str)?;
     let hotkey: HotKey = converted
         .parse()
@@ -30,7 +30,7 @@ pub fn setup(hotkey_str: &str) -> Result<(Receiver<HotkeyEvent>, HotkeyGuard)> {
 
     let receiver = GlobalHotKeyEvent::receiver().clone();
     let hotkey_id = hotkey.id();
-    let (tx, rx) = std::sync::mpsc::channel();
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
 
     std::thread::spawn(move || {
         loop {

@@ -21,12 +21,12 @@
 //! - `IpcConnection` - Individual client connection handler
 
 use anyhow::{Context, Result};
-use interprocess::local_socket::{
-    GenericFilePath, ListenerNonblockingMode, ListenerOptions, ToFsName, prelude::*,
-};
+use interprocess::local_socket::{GenericFilePath, ListenerOptions, ToFsName, prelude::*};
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
+use std::sync::Arc;
+use tokio::sync::mpsc;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum IpcMessage {
@@ -58,10 +58,13 @@ fn socket_name() -> String {
 }
 
 /// IPC Server for the background service
+///
+/// Uses a background thread to accept connections and sends them through a channel,
+/// enabling event-driven async operation without polling.
 pub struct IpcServer {
-    listener: LocalSocketListener,
+    conn_rx: mpsc::UnboundedReceiver<IpcConnection>,
     #[cfg(unix)]
-    socket_path: PathBuf,
+    socket_path: Arc<PathBuf>,
 }
 
 impl IpcServer {
@@ -70,10 +73,11 @@ impl IpcServer {
 
         // On Unix, save socket path for cleanup and remove old socket if it exists
         #[cfg(unix)]
-        let socket_path = PathBuf::from(&name_str);
+        let socket_path = Arc::new(PathBuf::from(&name_str));
         #[cfg(unix)]
         if socket_path.exists() {
-            std::fs::remove_file(&socket_path).context("Failed to remove old socket file")?;
+            std::fs::remove_file(socket_path.as_ref())
+                .context("Failed to remove old socket file")?;
         }
 
         let name = name_str
@@ -85,25 +89,36 @@ impl IpcServer {
             .create_sync()
             .context("Failed to create IPC listener")?;
 
-        // Set non-blocking mode for the listener
-        listener
-            .set_nonblocking(ListenerNonblockingMode::Both)
-            .context("Failed to set non-blocking mode")?;
+        // Create channel for connections
+        let (conn_tx, conn_rx) = mpsc::unbounded_channel();
+
+        // Spawn background thread to accept connections (blocking)
+        std::thread::spawn(move || {
+            loop {
+                match listener.accept() {
+                    Ok(stream) => {
+                        if conn_tx.send(IpcConnection { stream }).is_err() {
+                            break; // Receiver dropped, exit thread
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("IPC accept error: {e}");
+                        break;
+                    }
+                }
+            }
+        });
 
         Ok(Self {
-            listener,
+            conn_rx,
             #[cfg(unix)]
             socket_path,
         })
     }
 
-    /// Try to accept a new connection (non-blocking)
-    pub fn try_accept(&self) -> Result<Option<IpcConnection>> {
-        match self.listener.accept() {
-            Ok(stream) => Ok(Some(IpcConnection { stream })),
-            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => Ok(None),
-            Err(e) => Err(e.into()),
-        }
+    /// Receive the next connection asynchronously
+    pub async fn accept(&mut self) -> Option<IpcConnection> {
+        self.conn_rx.recv().await
     }
 }
 
@@ -112,7 +127,7 @@ impl Drop for IpcServer {
         // On Unix, clean up the socket file
         #[cfg(unix)]
         {
-            let _ = std::fs::remove_file(&self.socket_path);
+            let _ = std::fs::remove_file(self.socket_path.as_ref());
         }
         // On Windows, named pipes are cleaned up automatically by the OS
     }
