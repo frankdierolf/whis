@@ -16,7 +16,7 @@
 //!
 //! # Components
 //!
-//! - `IpcServer` - Non-blocking listener for the service
+//! - `IpcServer` - Event-driven async listener for the service
 //! - `IpcClient` - Blocking client for CLI commands
 //! - `IpcConnection` - Individual client connection handler
 
@@ -25,7 +25,6 @@ use interprocess::local_socket::{GenericFilePath, ListenerOptions, ToFsName, pre
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
-use std::sync::Arc;
 use tokio::sync::mpsc;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -64,7 +63,7 @@ fn socket_name() -> String {
 pub struct IpcServer {
     conn_rx: mpsc::UnboundedReceiver<IpcConnection>,
     #[cfg(unix)]
-    socket_path: Arc<PathBuf>,
+    socket_path: PathBuf,
 }
 
 impl IpcServer {
@@ -73,11 +72,10 @@ impl IpcServer {
 
         // On Unix, save socket path for cleanup and remove old socket if it exists
         #[cfg(unix)]
-        let socket_path = Arc::new(PathBuf::from(&name_str));
+        let socket_path = PathBuf::from(&name_str);
         #[cfg(unix)]
         if socket_path.exists() {
-            std::fs::remove_file(socket_path.as_ref())
-                .context("Failed to remove old socket file")?;
+            std::fs::remove_file(&socket_path).context("Failed to remove old socket file")?;
         }
 
         let name = name_str
@@ -102,8 +100,9 @@ impl IpcServer {
                         }
                     }
                     Err(e) => {
+                        // Log error but continue accepting - some errors may be transient
+                        // (e.g., too many open files, interrupted syscall)
                         eprintln!("IPC accept error: {e}");
-                        break;
                     }
                 }
             }
@@ -127,7 +126,7 @@ impl Drop for IpcServer {
         // On Unix, clean up the socket file
         #[cfg(unix)]
         {
-            let _ = std::fs::remove_file(self.socket_path.as_ref());
+            let _ = std::fs::remove_file(self.socket_path.as_path());
         }
         // On Windows, named pipes are cleaned up automatically by the OS
     }
