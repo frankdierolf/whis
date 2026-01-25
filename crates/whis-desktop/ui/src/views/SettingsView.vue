@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { TranscriptionMode } from '../components/settings/ModeCards.vue'
-import type { PostProcessor, Provider, SelectOption } from '../types'
+import type { OutputMethod, PostProcessor, Provider, SelectOption } from '../types'
 import { invoke } from '@tauri-apps/api/core'
 import { computed, onMounted, ref, watch } from 'vue'
 import AppSelect from '../components/AppSelect.vue'
@@ -271,6 +271,44 @@ function handleBubbleEnabledChange(value: boolean) {
   settingsStore.setBubbleEnabled(value)
 }
 
+// Output method settings (clipboard, autotype, both)
+const outputMethod = computed(() => settingsStore.state.ui.output_method)
+
+const outputMethodOptions: SelectOption[] = [
+  { value: 'clipboard', label: 'Clipboard' },
+  { value: 'autotype', label: 'Autotype' },
+  { value: 'both', label: 'Both' },
+]
+
+function handleOutputMethodChange(value: string | null) {
+  if (value) {
+    settingsStore.setOutputMethod(value as OutputMethod)
+  }
+}
+
+// Autotype tool status
+const needsAutotypeTools = computed(() =>
+  outputMethod.value === 'autotype' || outputMethod.value === 'both',
+)
+
+const autotypeToolsAvailable = computed(() => {
+  const status = settingsStore.state.autotypeToolStatus
+  // Tools are available if:
+  // - status is null (non-Linux, uses enigo)
+  // - or there are available tools
+  // - or no recommended tool is needed (meaning we already have what we need)
+  if (!status)
+    return true
+  return status.available.length > 0 || status.recommended === null
+})
+
+const autotypeInstallHint = computed(() => {
+  const status = settingsStore.state.autotypeToolStatus
+  if (!status || !status.install_hint)
+    return 'Install an autotype tool (ydotool recommended)'
+  return `Install ${status.recommended}: ${status.install_hint}`
+})
+
 // Model memory settings
 const keepModelLoaded = computed(() => settingsStore.state.ui.model_memory.keep_model_loaded)
 const unloadAfterMinutes = computed(() => settingsStore.state.ui.model_memory.unload_after_minutes)
@@ -505,6 +543,22 @@ function handleOllamaKeepAliveChange(value: string | null) {
               </div>
             </div>
 
+            <!-- Output Method -->
+            <div class="field-row">
+              <label>Output Method</label>
+              <AppSelect
+                :model-value="outputMethod"
+                :options="outputMethodOptions"
+                @update:model-value="handleOutputMethodChange"
+              />
+            </div>
+
+            <!-- Autotype tool installation hint -->
+            <p v-if="needsAutotypeTools && !autotypeToolsAvailable" class="env-hint">
+              <span class="hint-marker">[i]</span>
+              {{ autotypeInstallHint }}
+            </p>
+
             <!-- Config File Path -->
             <div class="field-row">
               <label>Config File</label>
@@ -593,6 +647,11 @@ function handleOllamaKeepAliveChange(value: string | null) {
           <div class="help-section">
             <h3>recording indicator</h3>
             <p>Shows a floating indicator during recording. Drag to reposition. The bubble remembers its last position.</p>
+          </div>
+
+          <div class="help-section">
+            <h3>output method</h3>
+            <p>How transcribed text is delivered. <strong>Clipboard</strong> copies text for pasting. <strong>Autotype</strong> types directly into the active window (requires wtype/xdotool on Linux). <strong>Both</strong> does both.</p>
           </div>
 
           <div class="help-section">
@@ -851,15 +910,20 @@ function handleOllamaKeepAliveChange(value: string | null) {
   padding-top: 12px;
 }
 
-/* Environment hint (Wayland bubble info) */
+/* Environment hint for tool installation */
 .env-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
   margin: 0;
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text-weak);
+  line-height: 1.4;
 }
 
 .hint-marker {
   color: var(--text-weak);
   opacity: 0.7;
+  flex-shrink: 0;
 }
 </style>

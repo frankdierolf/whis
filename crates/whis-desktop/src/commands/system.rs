@@ -5,7 +5,9 @@
 
 use crate::state::AppState;
 use tauri::{AppHandle, State};
-use whis_core::{Settings, WarmupConfig, warmup_configured};
+use whis_core::{
+    AutotypeToolStatus, Settings, WarmupConfig, get_autotype_tool_status, warmup_configured,
+};
 
 /// Get the command to toggle recording from an external source (e.g., GNOME custom shortcut).
 /// Returns the actual executable path so users can copy-paste into their compositor settings.
@@ -109,4 +111,13 @@ pub async fn warmup_connections() -> Result<(), String> {
         .map_err(|e| e.to_string())?;
 
     Ok(())
+}
+
+/// Get the status of autotyping tools on the system.
+///
+/// Returns information about which tools are available, which is recommended,
+/// and installation instructions if needed.
+#[tauri::command]
+pub fn get_autotype_tool_status_cmd() -> AutotypeToolStatus {
+    get_autotype_tool_status()
 }

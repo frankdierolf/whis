@@ -12,6 +12,9 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "clipboard")]
 use crate::clipboard::ClipboardMethod;
 
+#[cfg(feature = "autotyping")]
+use crate::autotyping::{AutotypeBackend, OutputMethod};
+
 /// Settings for UI behavior and device configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UiSettings {
@@ -82,6 +85,44 @@ pub struct UiSettings {
     /// Helps balance transcription speed vs memory usage.
     #[serde(default)]
     pub model_memory: ModelMemorySettings,
+
+    /// Output method for transcribed text.
+    ///
+    /// - `clipboard`: Copy to clipboard only (default, current behavior)
+    /// - `autotype`: Type directly into active window
+    /// - `both`: Both copy to clipboard and autotype to window
+    ///
+    /// Autotype simulates keyboard input to paste text directly.
+    /// Useful when clipboard pasting doesn't work (e.g., some terminals).
+    #[cfg(feature = "autotyping")]
+    #[serde(default)]
+    pub output_method: OutputMethod,
+
+    /// Backend for autotyping text into the active window.
+    ///
+    /// - `auto`: Auto-detect based on platform (recommended)
+    ///   - Wayland: uses wtype/dotool/ydotool (external tools)
+    ///   - X11: uses xdotool/ydotool (external tools)
+    ///   - macOS/Windows: uses enigo (pure Rust)
+    /// - `tools`: Force external CLI tools (Linux only)
+    /// - `enigo`: Force cross-platform input simulation
+    ///
+    /// Only used when `output_method` is `autotype` or `both`.
+    #[cfg(feature = "autotyping")]
+    #[serde(default)]
+    pub autotype_backend: AutotypeBackend,
+
+    /// Delay between keystrokes when autotyping to window (milliseconds).
+    ///
+    /// Some applications drop input if keys are sent too fast.
+    /// Set this to add a delay between each character.
+    ///
+    /// - `null`: No delay (fastest, works for most apps)
+    /// - `10-50`: Slight delay for slower apps
+    /// - `100+`: For very slow input handlers
+    #[cfg(feature = "autotyping")]
+    #[serde(default)]
+    pub autotype_delay_ms: Option<u32>,
 }
 
 fn default_chunk_duration() -> u64 {
@@ -196,6 +237,12 @@ impl Default for UiSettings {
             chunk_duration_secs: crate::configuration::DEFAULT_CHUNK_DURATION_SECS,
             bubble: BubbleSettings::default(),
             model_memory: ModelMemorySettings::default(),
+            #[cfg(feature = "autotyping")]
+            output_method: OutputMethod::default(),
+            #[cfg(feature = "autotyping")]
+            autotype_backend: AutotypeBackend::default(),
+            #[cfg(feature = "autotyping")]
+            autotype_delay_ms: None,
         }
     }
 }

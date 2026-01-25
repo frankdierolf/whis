@@ -216,7 +216,9 @@ async fn post_process_mistral(
         .ok_or_else(|| anyhow!("No response from Mistral"))
 }
 
-use super::ollama::{DEFAULT_OLLAMA_MODEL, DEFAULT_OLLAMA_URL};
+use super::ollama::{DEFAULT_OLLAMA_MODEL, DEFAULT_OLLAMA_URL, ensure_ollama_running};
+use crate::configuration::Preset;
+use crate::settings::Settings;
 
 /// Ollama API response structure
 #[derive(Debug, Deserialize)]
@@ -275,4 +277,93 @@ async fn post_process_ollama(
 
     let ollama_response: OllamaResponse = response.json().await?;
     Ok(ollama_response.message.content.trim().to_string())
+}
+
+/// Resolve post-processing configuration from settings and optional preset.
+///
+/// Returns a tuple of (processor, api_key_or_url, model, prompt) for use with `post_process()`.
+/// This validates the configuration and returns an error if required values are missing.
+pub fn resolve_post_processor_config(
+    preset: &Option<Preset>,
+    settings: &Settings,
+) -> Result<(PostProcessor, String, Option<String>, String)> {
+    // Determine which post-processor to use
+    let processor = if let Some(p) = preset {
+        if let Some(post_processor_str) = &p.post_processor {
+            post_processor_str
+                .parse()
+                .unwrap_or(settings.post_processing.processor.clone())
+        } else {
+            settings.post_processing.processor.clone()
+        }
+    } else {
+        settings.post_processing.processor.clone()
+    };
+
+    // Determine prompt: preset > settings > default
+    let prompt = if let Some(p) = preset {
+        p.prompt.clone()
+    } else {
+        settings
+            .post_processing
+            .prompt
+            .clone()
+            .unwrap_or_else(|| DEFAULT_POST_PROCESSING_PROMPT.to_string())
+    };
+
+    // Get API key/URL and model based on processor type
+    match processor {
+        PostProcessor::Ollama => {
+            // Start Ollama if not running
+            let ollama_url = settings
+                .services
+                .ollama
+                .url()
+                .ok_or_else(|| anyhow!("Ollama URL not configured"))?;
+            ensure_ollama_running(&ollama_url)?;
+
+            // Model priority: preset > settings
+            let model = preset
+                .as_ref()
+                .and_then(|p| p.model.clone())
+                .or_else(|| settings.services.ollama.model());
+
+            if model.is_none() {
+                return Err(anyhow!("Ollama model not configured"));
+            }
+
+            Ok((PostProcessor::Ollama, ollama_url, model, prompt))
+        }
+        PostProcessor::OpenAI => {
+            let api_key = settings
+                .post_processing
+                .api_key(&settings.transcription.api_keys)
+                .ok_or_else(|| {
+                    anyhow!(
+                        "OpenAI API key not configured. Set it with: whis config --openai-api-key <key>"
+                    )
+                })?;
+
+            // Model from preset if available
+            let model = preset.as_ref().and_then(|p| p.model.clone());
+
+            Ok((PostProcessor::OpenAI, api_key, model, prompt))
+        }
+        PostProcessor::Mistral => {
+            let api_key = settings
+                .post_processing
+                .api_key(&settings.transcription.api_keys)
+                .ok_or_else(|| {
+                    anyhow!(
+                        "Mistral API key not configured. Set it with: whis config --mistral-api-key <key>"
+                    )
+                })?;
+
+            // Model from preset if available
+            let model = preset.as_ref().and_then(|p| p.model.clone());
+
+            Ok((PostProcessor::Mistral, api_key, model, prompt))
+        }
+        PostProcessor::None => Err(anyhow!("Post-processing not configured. Run: whis setup")),
+    }
 }

@@ -20,6 +20,7 @@ pub use ollama::{
 pub use ollama_manager::{clear_warmup_cache, preload_ollama};
 pub use post_processing::{
     DEFAULT_POST_PROCESSING_PROMPT, PostProcessConfig, PostProcessor, post_process,
+    resolve_post_processor_config,
 };
 pub use transcribe::progressive_transcribe_cloud;
 #[cfg(feature = "local-transcription")]

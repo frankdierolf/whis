@@ -13,6 +13,9 @@ use rdev::{Event, EventType, Key, listen};
 #[cfg(target_os = "macos")]
 use std::collections::HashSet;
 
+#[cfg(target_os = "linux")]
+use std::sync::Arc;
+
 #[cfg(target_os = "macos")]
 use std::sync::{Arc, Mutex};
 
@@ -51,18 +54,40 @@ pub fn listen_for_hotkey<FPress, FRelease>(
     on_release: FRelease,
 ) -> Result<()>
 where
-    FPress: Fn() + Send + 'static,
-    FRelease: Fn() + Send + 'static,
+    FPress: Fn() + Send + Sync + 'static,
+    FRelease: Fn() + Send + Sync + 'static,
 {
-    // Linux: Use shared grab callback from whis-core
+    // Linux: Use shared grab callback from whis-core with retry loop
+    // The grab can be disrupted by autotyping tools (ydotool, enigo, etc.)
+    // When that happens, we wait briefly and re-establish the grab
     #[cfg(target_os = "linux")]
     {
-        let callback = whis_core::hotkey::create_grab_callback(hotkey, on_press, on_release);
+        // Wrap closures in Arc to allow recreation of callback on retry
+        let on_press = Arc::new(on_press);
+        let on_release = Arc::new(on_release);
+        let retry_delay = std::time::Duration::from_millis(300);
 
-        if let Err(e) = grab(callback) {
-            anyhow::bail!(
-                "Failed to grab keyboard: {e:?}\n\nLinux setup required:\n  sudo usermod -aG input $USER\n  echo 'KERNEL==\"uinput\", GROUP=\"input\", MODE=\"0660\"' | sudo tee /etc/udev/rules.d/99-uinput.rules\n  sudo udevadm control --reload-rules && sudo udevadm trigger\nThen logout and login again."
+        loop {
+            // Clone Arc refs for this iteration
+            let press_clone = Arc::clone(&on_press);
+            let release_clone = Arc::clone(&on_release);
+
+            let callback = whis_core::hotkey::create_grab_callback(
+                hotkey.clone(),
+                move || press_clone(),
+                move || release_clone(),
             );
+
+            match grab(callback) {
+                Ok(()) => {
+                    // grab() exited normally - shouldn't happen, but continue
+                }
+                Err(_e) => {
+                    // Grab was disrupted (e.g., by autotyping tool)
+                    // Wait and retry silently
+                    std::thread::sleep(retry_delay);
+                }
+            }
         }
     }
 
@@ -112,5 +137,7 @@ where
         }
     }
 
+    // On Linux, the loop above never exits - this is only reached on macOS
+    #[allow(unreachable_code)]
     Ok(())
 }

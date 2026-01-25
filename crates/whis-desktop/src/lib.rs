@@ -94,6 +94,7 @@ pub fn run(start_in_tray: bool) {
             commands::list_audio_devices,
             commands::exit_app,
             commands::warmup_connections,
+            commands::get_autotype_tool_status_cmd,
             // Validation commands
             commands::validate_openai_api_key,
             commands::validate_mistral_api_key,

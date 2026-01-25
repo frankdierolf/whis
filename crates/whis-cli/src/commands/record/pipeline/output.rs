@@ -4,7 +4,7 @@ use anyhow::Result;
 use std::fs;
 use std::io::{self, IsTerminal};
 use std::path::PathBuf;
-use whis_core::{Settings, copy_to_clipboard};
+use whis_core::{OutputMethod, Settings, autotype_text, copy_to_clipboard};
 
 use crate::args::OutputFormat;
 
@@ -14,7 +14,7 @@ use super::super::types::ProcessedResult;
 pub enum OutputMode {
     /// Print to stdout
     Print,
-    /// Copy to clipboard
+    /// Copy to clipboard (or autotype to window, based on settings)
     Clipboard,
     /// Write to file
     File(PathBuf),
@@ -146,9 +146,37 @@ pub fn output(
         }
         OutputMode::Clipboard => {
             let settings = Settings::load();
-            copy_to_clipboard(&formatted, settings.ui.clipboard_backend)?;
+
+            // Handle output based on configured method
+            match settings.ui.output_method {
+                OutputMethod::Clipboard => {
+                    copy_to_clipboard(&formatted, settings.ui.clipboard_backend)?;
+                }
+                OutputMethod::Autotype => {
+                    autotype_text(
+                        &formatted,
+                        settings.ui.autotype_backend,
+                        settings.ui.autotype_delay_ms,
+                    )?;
+                }
+                OutputMethod::Both => {
+                    copy_to_clipboard(&formatted, settings.ui.clipboard_backend)?;
+                    autotype_text(
+                        &formatted,
+                        settings.ui.autotype_backend,
+                        settings.ui.autotype_delay_ms,
+                    )?;
+                }
+            }
+
             if !quiet && io::stdout().is_terminal() {
-                println!("Copied to clipboard!");
+                match settings.ui.output_method {
+                    OutputMethod::Clipboard => eprintln!("Copied to clipboard!"),
+                    OutputMethod::Autotype => eprintln!("Autotyped to active window!"),
+                    OutputMethod::Both => {
+                        eprintln!("Copied to clipboard and autotyped to active window!")
+                    }
+                }
             }
         }
     }

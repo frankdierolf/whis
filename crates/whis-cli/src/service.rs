@@ -39,8 +39,8 @@ use crate::app::TranscriptionConfig;
 use crate::hotkey::HotkeyEvent;
 use crate::ipc::{IpcMessage, IpcResponse, IpcServer};
 use whis_core::{
-    AudioRecorder, DEFAULT_POST_PROCESSING_PROMPT, Settings, TranscriptionProvider,
-    copy_to_clipboard, post_process,
+    AudioRecorder, OutputMethod, PostProcessor, Preset, Settings, TranscriptionProvider,
+    autotype_text, copy_to_clipboard, post_process, resolve_post_processor_config,
 };
 
 // Type aliases to reduce complexity warnings
@@ -63,10 +63,17 @@ pub struct Service {
     api_key: String,
     language: Option<String>,
     recording_counter: Arc<Mutex<u32>>,
+    preset: Option<Preset>,
+    /// CLI override for output method (e.g., --autotype flag)
+    output_method_override: Option<OutputMethod>,
 }
 
 impl Service {
-    pub fn new(config: TranscriptionConfig) -> Result<Self> {
+    pub fn new(
+        config: TranscriptionConfig,
+        preset: Option<Preset>,
+        output_method_override: Option<OutputMethod>,
+    ) -> Result<Self> {
         Ok(Self {
             state: Arc::new(Mutex::new(ServiceState::Idle)),
             recorder: Arc::new(Mutex::new(None)),
@@ -76,6 +83,8 @@ impl Service {
             api_key: config.api_key,
             language: config.language,
             recording_counter: Arc::new(Mutex::new(0)),
+            preset,
+            output_method_override,
         })
     }
 
@@ -417,48 +426,77 @@ impl Service {
             .await
             .context("Failed to join transcription task")??;
 
-        // Print completion message immediately after transcription finishes
-        println!("#{count} Done.");
-
-        // Apply post-processing if enabled
+        // Apply post-processing if enabled or preset is provided
         let settings = Settings::load();
-        let final_text = if settings.post_processing.enabled {
-            if let Some(post_processor_api_key) = settings
-                .post_processing
-                .api_key(&settings.transcription.api_keys)
-            {
-                println!("#{count} Post-processing...");
+        let final_text = if settings.post_processing.enabled || self.preset.is_some() {
+            match resolve_post_processor_config(&self.preset, &settings) {
+                Ok((processor, api_key, model, prompt)) => {
+                    // Re-warm Ollama model if needed
+                    if processor == PostProcessor::Ollama && model.is_some() {
+                        settings.services.ollama.preload();
+                        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+                    }
 
-                let prompt = settings
-                    .post_processing
-                    .prompt
-                    .as_deref()
-                    .unwrap_or(DEFAULT_POST_PROCESSING_PROMPT);
+                    println!("#{count} Post-processing...");
 
-                match post_process(
-                    &post_processor_api_key,
-                    &settings.post_processing.processor,
-                    &transcription,
-                    prompt,
-                    None,
-                )
-                .await
-                {
-                    Ok(processed) => processed,
-                    Err(_) => transcription, // Silently fallback in service mode
+                    match post_process(
+                        &transcription,
+                        &processor,
+                        &api_key,
+                        &prompt,
+                        model.as_deref(),
+                    )
+                    .await
+                    {
+                        Ok(processed) => {
+                            println!("#{count} Done.");
+                            processed
+                        }
+                        Err(e) => {
+                            eprintln!("#{count} Post-processing failed: {e}");
+                            println!("#{count} Done.");
+                            transcription
+                        }
+                    }
                 }
-            } else {
-                transcription
+                Err(e) => {
+                    eprintln!("#{count} Post-processing config error: {e}");
+                    println!("#{count} Done.");
+                    transcription
+                }
             }
         } else {
+            println!("#{count} Done.");
             transcription
         };
 
-        // Copy to clipboard (blocking operation)
+        // Output based on configured method (blocking operation)
+        // Use CLI override if present, otherwise use settings from config file
         let clipboard_method = settings.ui.clipboard_backend.clone();
-        tokio::task::spawn_blocking(move || copy_to_clipboard(&final_text, clipboard_method))
-            .await
-            .context("Failed to join task")??;
+        let output_method = self
+            .output_method_override
+            .clone()
+            .unwrap_or(settings.ui.output_method.clone());
+        let autotype_backend = settings.ui.autotype_backend.clone();
+        let autotype_delay_ms = settings.ui.autotype_delay_ms;
+
+        tokio::task::spawn_blocking(move || {
+            match output_method {
+                OutputMethod::Clipboard => {
+                    copy_to_clipboard(&final_text, clipboard_method)?;
+                }
+                OutputMethod::Autotype => {
+                    autotype_text(&final_text, autotype_backend, autotype_delay_ms)?;
+                }
+                OutputMethod::Both => {
+                    copy_to_clipboard(&final_text, clipboard_method)?;
+                    autotype_text(&final_text, autotype_backend, autotype_delay_ms)?;
+                }
+            }
+            Ok::<(), anyhow::Error>(())
+        })
+        .await
+        .context("Failed to join task")??;
 
         Ok(())
     }

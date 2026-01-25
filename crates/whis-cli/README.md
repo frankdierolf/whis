@@ -43,6 +43,7 @@ whis -f recording.wav          # Transcribe a WAV file
 
 # Output options
 whis --print                   # Print to stdout instead of clipboard
+whis start --autotype          # Type into active window (hotkey mode)
 whis -d 10                     # Record for 10 seconds (non-interactive)
 whis -v                        # Verbose output
 

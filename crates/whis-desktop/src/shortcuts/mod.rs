@@ -82,7 +82,10 @@ pub fn setup_shortcuts(app: &tauri::App) {
 
     let compositor_name = capability.platform_info.compositor.display_name();
     let platform_name = platform_display_name(&capability.platform_info.platform);
-    println!("Detected environment: {} ({})", compositor_name, platform_name);
+    println!(
+        "Detected environment: {} ({})",
+        compositor_name, platform_name
+    );
 
     match capability.backend {
         ShortcutBackend::TauriPlugin => {

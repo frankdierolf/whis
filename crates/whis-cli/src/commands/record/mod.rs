@@ -97,7 +97,12 @@ pub fn run(config: RecordConfig) -> Result<()> {
         quiet,
     ))?;
 
-    // Phase 4: Output (print, file, or clipboard)
+    // Print completion after all processing is done
+    if !quiet {
+        println!(" Done.");
+    }
+
+    // Phase 4: Output (print, file, type to window, or clipboard)
     let output_mode = if config.print {
         pipeline::OutputMode::Print
     } else if let Some(path) = config.output_path {
@@ -326,11 +331,6 @@ async fn progressive_record_and_transcribe(
     }
 
     let text = transcription_task.await??;
-
-    // Print completion message immediately after transcription finishes
-    if !quiet {
-        println!(" Done.");
-    }
 
     Ok(types::TranscriptionResult { text })
 }

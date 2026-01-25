@@ -74,6 +74,7 @@ the recording → chunking → transcription → clipboard pipeline.
 | `local-transcription` | Yes | Local transcription via Whisper/Parakeet (requires model) |
 | `vad` | Yes | Voice Activity Detection to skip silence |
 | `realtime` | Yes | OpenAI/Deepgram Realtime API for streaming |
+| `autotyping` | Yes | Type text directly into active window (wtype/xdotool/enigo) |
 
 ## Modules
 
@@ -85,6 +86,7 @@ the recording → chunking → transcription → clipboard pipeline.
 | `configuration` | `TranscriptionProvider` enum, presets, defaults |
 | `settings` | User preferences (provider, API keys, language, hotkeys) |
 | `clipboard` | System clipboard operations with multiple backends |
+| `autotyping` | Type text into active window (platform-specific backends) |
 | `model` | Whisper/Parakeet model management |
 | `state` | Recording state machine |
 | `verbose` | Debug logging utilities |
