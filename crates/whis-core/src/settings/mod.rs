@@ -15,11 +15,13 @@
 //!
 //! # Usage
 //!
+//! ## CLI Usage
+//!
 //! ```rust,no_run
 //! use whis_core::settings::Settings;
 //!
-//! // Load settings from disk
-//! let settings = Settings::load();
+//! // Load settings from CLI config file
+//! let settings = Settings::load_cli();
 //!
 //! // Access nested settings
 //! println!("Provider: {}", settings.transcription.provider);
@@ -28,14 +30,19 @@
 //! // Modify and save
 //! let mut settings = settings;
 //! settings.transcription.provider = whis_core::config::TranscriptionProvider::Mistral;
-//! settings.save().expect("Failed to save settings");
+//! settings.save_cli().expect("Failed to save settings");
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 //!
-//! # File Location
+//! ## Desktop Usage
 //!
-//! Settings are stored at `~/.config/whis/settings.json` with 0600 permissions
-//! to protect API keys.
+//! Desktop uses Tauri's plugin-store for settings persistence. See whis-desktop
+//! for implementation details.
+//!
+//! # File Locations
+//!
+//! - **CLI:** `~/.config/whis-cli/settings.json` with 0600 permissions
+//! - **Desktop:** Managed by Tauri plugin-store
 
 mod post_processing;
 mod services;
@@ -73,21 +80,21 @@ pub struct Settings {
 }
 
 impl Settings {
-    /// Get the settings file path (~/.config/whis/settings.json).
-    pub fn path() -> PathBuf {
+    /// Get the CLI settings file path (~/.config/whis-cli/settings.json).
+    pub fn cli_path() -> PathBuf {
         dirs::config_dir()
             .unwrap_or_else(|| PathBuf::from("."))
-            .join("whis")
+            .join("whis-cli")
             .join("settings.json")
     }
 
-    /// Load settings from disk.
+    /// Load settings from CLI config file.
     ///
     /// Returns default settings if file doesn't exist or cannot be parsed.
     /// On parse failure, creates a numbered backup (backup, backup.1, backup.2, etc.)
     /// to preserve the original file before defaults are applied.
-    pub fn load() -> Self {
-        let path = Self::path();
+    pub fn load_cli() -> Self {
+        let path = Self::cli_path();
         if let Ok(content) = fs::read_to_string(&path) {
             match serde_json::from_str(&content) {
                 Ok(settings) => return settings,
@@ -117,14 +124,14 @@ impl Settings {
         Self::default()
     }
 
-    /// Save settings to disk with 0600 permissions.
+    /// Save settings to CLI config file with 0600 permissions.
     ///
     /// On Unix, creates the file with mode 0600 from the start to avoid
     /// a race condition where the file might briefly be world-readable.
-    pub fn save(&self) -> Result<()> {
+    pub fn save_cli(&self) -> Result<()> {
         use std::io::Write;
 
-        let path = Self::path();
+        let path = Self::cli_path();
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }

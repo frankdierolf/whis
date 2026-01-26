@@ -3,8 +3,10 @@
 //! Provides Tauri commands for managing transcription presets (built-in and user-created).
 //! Presets contain predefined prompts and post-processing configurations.
 
+use super::save_settings_to_store;
 use crate::state::AppState;
-use tauri::State;
+use tauri::{AppHandle, State};
+use whis_core::preset::{Preset, PresetSource};
 
 /// Preset info for the UI
 #[derive(serde::Serialize)]
@@ -47,8 +49,6 @@ pub struct UpdatePresetInput {
 /// List all available presets (built-in + user)
 #[tauri::command]
 pub fn list_presets() -> Vec<PresetInfo> {
-    use whis_core::preset::{Preset, PresetSource};
-
     Preset::list_all()
         .into_iter()
         .map(|(p, source)| PresetInfo {
@@ -61,12 +61,14 @@ pub fn list_presets() -> Vec<PresetInfo> {
 
 /// Apply a preset - updates settings with the preset's configuration and sets it as active
 #[tauri::command]
-pub async fn apply_preset(name: String, state: State<'_, AppState>) -> Result<(), String> {
-    use whis_core::preset::Preset;
-
+pub async fn apply_preset(
+    app: AppHandle,
+    name: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
     let (preset, _) = Preset::load(&name)?;
 
-    {
+    let settings_clone = {
         let mut settings = state.settings.lock().unwrap();
 
         // Apply preset's post-processing prompt
@@ -82,9 +84,11 @@ pub async fn apply_preset(name: String, state: State<'_, AppState>) -> Result<()
         // Set this preset as active
         settings.ui.active_preset = Some(name);
 
-        // Save the settings
-        settings.save().map_err(|e| e.to_string())?;
-    }
+        settings.clone()
+    };
+
+    // Save the settings to store
+    save_settings_to_store(&app, &settings_clone)?;
 
     // Clear cached transcription config since settings changed
     *state.transcription_config.lock().unwrap() = None;
@@ -102,20 +106,22 @@ pub fn get_active_preset(state: State<'_, AppState>) -> Option<String> {
 /// Set the active preset
 #[tauri::command]
 pub async fn set_active_preset(
+    app: AppHandle,
     name: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let mut settings = state.settings.lock().unwrap();
-    settings.ui.active_preset = name;
-    settings.save().map_err(|e| e.to_string())?;
+    let settings_clone = {
+        let mut settings = state.settings.lock().unwrap();
+        settings.ui.active_preset = name;
+        settings.clone()
+    };
+    save_settings_to_store(&app, &settings_clone)?;
     Ok(())
 }
 
 /// Get full details of a preset for viewing/editing
 #[tauri::command]
 pub fn get_preset_details(name: String) -> Result<PresetDetails, String> {
-    use whis_core::preset::{Preset, PresetSource};
-
     let (preset, source) = Preset::load(&name)?;
 
     Ok(PresetDetails {
@@ -131,8 +137,6 @@ pub fn get_preset_details(name: String) -> Result<PresetDetails, String> {
 /// Create a new user preset
 #[tauri::command]
 pub fn create_preset(input: CreatePresetInput) -> Result<PresetInfo, String> {
-    use whis_core::preset::Preset;
-
     // Validate name
     Preset::validate_name(&input.name, false)?;
 
@@ -162,8 +166,6 @@ pub fn create_preset(input: CreatePresetInput) -> Result<PresetInfo, String> {
 /// Update an existing user preset
 #[tauri::command]
 pub fn update_preset(name: String, input: UpdatePresetInput) -> Result<PresetInfo, String> {
-    use whis_core::preset::Preset;
-
     // Check it's not a built-in
     if Preset::is_builtin(&name) {
         return Err(format!("Cannot edit built-in preset '{}'", name));
@@ -190,19 +192,27 @@ pub fn update_preset(name: String, input: UpdatePresetInput) -> Result<PresetInf
 
 /// Delete a user preset
 #[tauri::command]
-pub fn delete_preset(name: String, state: State<'_, AppState>) -> Result<(), String> {
-    use whis_core::preset::Preset;
-
+pub fn delete_preset(
+    app: AppHandle,
+    name: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
     // Delete the preset file
     Preset::delete(&name)?;
 
     // If this was the active preset, clear it
-    {
+    let settings_clone = {
         let mut settings = state.settings.lock().unwrap();
         if settings.ui.active_preset.as_deref() == Some(&name) {
             settings.ui.active_preset = None;
-            settings.save().map_err(|e| e.to_string())?;
+            Some(settings.clone())
+        } else {
+            None
         }
+    };
+
+    if let Some(settings) = settings_clone {
+        save_settings_to_store(&app, &settings)?;
     }
 
     Ok(())

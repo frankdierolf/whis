@@ -5,9 +5,7 @@
 
 use crate::state::AppState;
 use tauri::{AppHandle, State};
-use whis_core::{
-    AutotypeToolStatus, Settings, WarmupConfig, get_autotype_tool_status, warmup_configured,
-};
+use whis_core::{AutotypeToolStatus, WarmupConfig, get_autotype_tool_status, warmup_configured};
 
 /// Get the command to toggle recording from an external source (e.g., GNOME custom shortcut).
 /// Returns the actual executable path so users can copy-paste into their compositor settings.
@@ -77,24 +75,33 @@ pub fn exit_app(app: AppHandle) {
 /// on the first transcription request. The warmup is best-effort and
 /// will not block the UI.
 #[tauri::command]
-pub async fn warmup_connections() -> Result<(), String> {
-    let settings = Settings::load();
+pub async fn warmup_connections(state: State<'_, AppState>) -> Result<(), String> {
+    let (provider, provider_api_key, post_processor, post_processor_api_key) = {
+        let settings = state.settings.lock().unwrap();
 
-    // Get provider and its API key
-    let provider = Some(settings.transcription.provider.to_string());
-    let provider_api_key = settings.transcription.api_key_from_settings();
+        // Get provider and its API key
+        let provider = Some(settings.transcription.provider.to_string());
+        let provider_api_key = settings.transcription.api_key_from_settings();
 
-    // Get post-processor and its API key
-    let post_processor = match &settings.post_processing.processor {
-        whis_core::PostProcessor::None => None,
-        p => Some(p.to_string()),
-    };
-    let post_processor_api_key = if post_processor.is_some() {
-        settings
-            .post_processing
-            .api_key_from_settings(&settings.transcription.api_keys)
-    } else {
-        None
+        // Get post-processor and its API key
+        let post_processor = match &settings.post_processing.processor {
+            whis_core::PostProcessor::None => None,
+            p => Some(p.to_string()),
+        };
+        let post_processor_api_key = if post_processor.is_some() {
+            settings
+                .post_processing
+                .api_key_from_settings(&settings.transcription.api_keys)
+        } else {
+            None
+        };
+
+        (
+            provider,
+            provider_api_key,
+            post_processor,
+            post_processor_api_key,
+        )
     };
 
     // Build warmup config

@@ -22,7 +22,7 @@ pub async fn process(
 
     // If post-processing is enabled OR a preset is provided, apply LLM processing
     if config.enabled || config.preset.is_some() {
-        let settings = Settings::load();
+        let settings = Settings::load_cli();
         let (processor, api_key, model, prompt) =
             resolve_post_processor_config(&config.preset, &settings)?;
 

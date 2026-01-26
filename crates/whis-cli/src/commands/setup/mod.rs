@@ -50,7 +50,7 @@ pub fn run() -> Result<()> {
 
 /// Unified setup wizard - guides user through all configuration
 fn setup_wizard() -> Result<()> {
-    let settings = Settings::load();
+    let settings = Settings::load_cli();
 
     // Default to current provider type (Local if using local, else Cloud)
     let default = match settings.transcription.provider {
@@ -88,7 +88,7 @@ fn setup_wizard() -> Result<()> {
 
 /// Setup shortcut mode (system or direct)
 fn setup_shortcut_step() -> Result<()> {
-    let mut settings = Settings::load();
+    let mut settings = Settings::load_cli();
 
     let items = vec!["System shortcut", "Direct capture"];
     let default = if settings.shortcuts.cli_mode == CliShortcutMode::Direct {
@@ -102,7 +102,7 @@ fn setup_shortcut_step() -> Result<()> {
         0 => {
             // System mode
             settings.shortcuts.cli_mode = CliShortcutMode::System;
-            settings.save()?;
+            settings.save_cli()?;
 
             interactive::info("Add a shortcut in desktop settings: whis toggle");
         }
@@ -118,7 +118,7 @@ fn setup_shortcut_step() -> Result<()> {
                 match hotkey::validate(&input) {
                     Ok(normalized) => {
                         settings.shortcuts.cli_key = input;
-                        settings.save()?;
+                        settings.save_cli()?;
                         break normalized;
                     }
                     Err(_) => {
@@ -171,7 +171,7 @@ fn setup_audio_device_step() -> Result<()> {
     }
 
     // Find current selection for default highlight
-    let mut settings = Settings::load();
+    let mut settings = Settings::load_cli();
     let default_idx = settings
         .ui
         .microphone_device
@@ -189,7 +189,7 @@ fn setup_audio_device_step() -> Result<()> {
         Some(devices[choice - 1].name.clone())
     };
 
-    settings.save()?;
+    settings.save_cli()?;
     Ok(())
 }
 

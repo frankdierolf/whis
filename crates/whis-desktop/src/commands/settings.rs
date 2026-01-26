@@ -2,6 +2,7 @@
 //!
 //! Provides Tauri commands for getting, saving, and validating application settings.
 
+use super::save_settings_to_store;
 use crate::state::AppState;
 use tauri::{AppHandle, State};
 use whis_core::{
@@ -57,8 +58,10 @@ pub async fn save_settings(
     {
         let mut state_settings = state.settings.lock().unwrap();
         *state_settings = settings.clone();
-        state_settings.save().map_err(|e| e.to_string())?;
     }
+
+    // Save to Tauri store
+    save_settings_to_store(&app, &settings)?;
 
     // Clear cached transcription config if provider or API key changed
     if config_changed {

@@ -14,7 +14,7 @@ pub fn run(autotype: bool, preset_name: Option<String>) -> Result<()> {
     }
 
     // Load settings and transcription configuration
-    let settings = Settings::load();
+    let settings = Settings::load_cli();
 
     // Determine output method override from CLI flag
     let output_method_override = if autotype {

@@ -145,7 +145,7 @@ pub fn output(
             }
         }
         OutputMode::Clipboard => {
-            let settings = Settings::load();
+            let settings = Settings::load_cli();
 
             // Handle output based on configured method
             match settings.ui.output_method {

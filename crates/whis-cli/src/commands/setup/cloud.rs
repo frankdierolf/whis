@@ -73,7 +73,7 @@ pub fn prompt_and_validate_key(provider: &TranscriptionProvider) -> Result<Strin
 /// Streamlined cloud transcription setup (no post-processing config)
 /// Used by the unified wizard
 pub fn setup_transcription_cloud() -> Result<()> {
-    let mut settings = Settings::load();
+    let mut settings = Settings::load_cli();
     let providers = cloud_providers();
 
     // Build provider display items: with markers for selection, just name for confirmation
@@ -171,7 +171,7 @@ pub fn setup_transcription_cloud() -> Result<()> {
     }
 
     settings.transcription.provider = provider;
-    settings.save()?;
+    settings.save_cli()?;
 
     Ok(())
 }

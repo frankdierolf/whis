@@ -205,7 +205,7 @@ pub fn select_ollama_model(url: &str, current_model: Option<&str>) -> Result<Str
 
 /// Independent post-processing step (called after transcription setup in wizard)
 pub fn setup_post_processing_step(_prefer_cloud: bool) -> Result<()> {
-    let mut settings = Settings::load();
+    let mut settings = Settings::load_cli();
 
     // Default to current processor setting
     let default = match settings.post_processing.processor {
@@ -249,7 +249,7 @@ pub fn setup_post_processing_step(_prefer_cloud: bool) -> Result<()> {
         _ => unreachable!(),
     }
 
-    settings.save()?;
+    settings.save_cli()?;
     Ok(())
 }
 

@@ -4,6 +4,7 @@
 
 use tauri::{AppHandle, Manager};
 
+use super::save_settings_to_store;
 use crate::state::AppState;
 
 /// Toggle recording from bubble click
@@ -44,14 +45,14 @@ pub fn bubble_move_by(app: AppHandle, dx: f64, dy: f64) -> Result<(), String> {
 #[tauri::command]
 pub fn bubble_save_position(app: AppHandle, x: f64, y: f64) -> Result<(), String> {
     let state = app.state::<AppState>();
-    state.with_settings_mut(|s| {
+
+    // Update state and get clone for persistence
+    let settings_clone = state.with_settings_mut(|s| {
         s.ui.bubble.custom_position = Some((x, y));
+        s.clone()
     });
-    // Persist to disk
-    if let Err(e) = state.with_settings(|s| s.save()) {
-        eprintln!("Failed to save bubble position: {e}");
-    }
-    Ok(())
+
+    save_settings_to_store(&app, &settings_clone)
 }
 
 /// Check if bubble drag-and-drop is supported on this platform.

@@ -22,7 +22,7 @@ use whis_core::model::{ModelType, ParakeetModel, WhisperModel};
 /// Streamlined local transcription setup (no post-processing config)
 /// Used by the unified wizard
 pub fn setup_transcription_local() -> Result<()> {
-    let mut settings = Settings::load();
+    let mut settings = Settings::load_cli();
 
     // Determine current engine and show with [current] marker during selection
     let current_engine = match settings.transcription.provider {
@@ -206,7 +206,7 @@ pub fn setup_transcription_local() -> Result<()> {
         }
         _ => {}
     }
-    settings.save()?;
+    settings.save_cli()?;
 
     Ok(())
 }

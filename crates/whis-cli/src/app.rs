@@ -20,10 +20,10 @@ pub fn load_transcription_config_with_language(
     language_override: Option<String>,
 ) -> Result<TranscriptionConfig> {
     // Check if settings file exists (fresh install detection)
-    let settings_path = Settings::path();
+    let settings_path = Settings::cli_path();
     let is_fresh_install = !settings_path.exists();
 
-    let settings = Settings::load();
+    let settings = Settings::load_cli();
     let provider = settings.transcription.provider.clone();
 
     // Use override if provided, otherwise use configured language

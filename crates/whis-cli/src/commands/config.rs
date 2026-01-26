@@ -33,7 +33,7 @@ const VALID_KEYS: &[&str] = &[
 pub fn run(key: Option<String>, value: Option<String>, list: bool, path: bool) -> Result<()> {
     // Handle --path flag
     if path {
-        println!("{}", Settings::path().display());
+        println!("{}", Settings::cli_path().display());
         return Ok(());
     }
 
@@ -74,7 +74,7 @@ pub fn run(key: Option<String>, value: Option<String>, list: bool, path: bool) -
 }
 
 fn set_config(key: &str, value: &str) -> Result<()> {
-    let mut settings = Settings::load();
+    let mut settings = Settings::load_cli();
     let value_trimmed = value.trim();
 
     match key {
@@ -260,12 +260,12 @@ fn set_config(key: &str, value: &str) -> Result<()> {
         _ => unreachable!("Key validation should prevent this"),
     }
 
-    settings.save()?;
+    settings.save_cli()?;
     Ok(())
 }
 
 fn get_config(key: &str) -> Result<()> {
-    let settings = Settings::load();
+    let settings = Settings::load_cli();
 
     match key {
         "provider" => println!("{}", settings.transcription.provider),
@@ -343,9 +343,9 @@ fn print_api_key(settings: &Settings, provider: &TranscriptionProvider) {
 }
 
 fn show_all_settings() -> Result<()> {
-    let settings = Settings::load();
+    let settings = Settings::load_cli();
 
-    println!("Configuration file: {}", Settings::path().display());
+    println!("Configuration file: {}", Settings::cli_path().display());
     println!();
 
     println!("[Transcription]");

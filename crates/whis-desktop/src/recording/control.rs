@@ -9,8 +9,8 @@ use tokio::sync::{mpsc, oneshot};
 #[cfg(feature = "local-transcription")]
 use whis_core::progressive_transcribe_local;
 use whis_core::{
-    AudioRecorder, ChunkerConfig, PostProcessor, ProgressiveChunker, Settings,
-    TranscriptionProvider, progressive_transcribe_cloud,
+    AudioRecorder, ChunkerConfig, PostProcessor, ProgressiveChunker, TranscriptionProvider, info,
+    progressive_transcribe_cloud,
 };
 
 /// Start recording with progressive transcription (default mode)
@@ -43,38 +43,34 @@ pub fn start_recording_sync(_app: &AppHandle, state: &AppState) -> Result<(), St
     // Check if this is a realtime provider (for branching later)
     let is_realtime = whis_core::is_realtime_provider(&provider);
 
-    // Create recorder and start streaming
-    let mut recorder = AudioRecorder::new().map_err(|e| e.to_string())?;
-
-    // Configure VAD from settings (disabled for realtime - they handle silence detection)
-    let vad_enabled = {
-        let settings = state.settings.lock().unwrap();
-        settings.ui.vad.enabled && !is_realtime
-    };
+    // Extract all needed settings values in a single lock acquisition
+    let settings = state.settings.lock().unwrap();
+    let vad_enabled = settings.ui.vad.enabled && !is_realtime;
+    let vad_threshold = settings.ui.vad.threshold;
+    let device_name = settings.ui.microphone_device.clone();
+    let chunk_duration = settings.ui.chunk_duration_secs;
+    #[cfg(feature = "local-transcription")]
+    let keep_loaded = settings.ui.model_memory.keep_model_loaded;
+    #[cfg(feature = "local-transcription")]
+    let whisper_model_path = settings.transcription.whisper_model_path();
+    #[cfg(feature = "local-transcription")]
+    let parakeet_model_path = settings.transcription.parakeet_model_path();
+    let ollama_preload = settings.post_processing.processor == PostProcessor::Ollama;
+    let ollama_settings = settings.services.ollama.clone();
+    drop(settings);
 
     // Configure model memory settings for local transcription
     #[cfg(feature = "local-transcription")]
-    {
-        let keep_loaded = {
-            let settings = state.settings.lock().unwrap();
-            settings.ui.model_memory.keep_model_loaded
-        };
-        provider.set_keep_loaded(keep_loaded);
-    }
-    let vad_threshold = state.settings.lock().unwrap().ui.vad.threshold;
+    provider.set_keep_loaded(keep_loaded);
+
+    // Create recorder and start streaming
+    let mut recorder = AudioRecorder::new().map_err(|e| e.to_string())?;
     recorder.set_vad(vad_enabled, vad_threshold);
 
     // Start streaming recording
-    let device_name = state.settings.lock().unwrap().ui.microphone_device.clone();
-    let mut audio_rx_bounded = if let Some(device) = device_name.as_deref() {
-        recorder
-            .start_recording_streaming_with_device(Some(device))
-            .map_err(|e| e.to_string())?
-    } else {
-        recorder
-            .start_recording_streaming()
-            .map_err(|e| e.to_string())?
-    };
+    let mut audio_rx_bounded = recorder
+        .start_recording_streaming_with_device(device_name.as_deref())
+        .map_err(|e| e.to_string())?;
 
     // Create unbounded channel adapter (used by both realtime and chunked paths)
     let (audio_tx_unbounded, audio_rx_unbounded) = mpsc::unbounded_channel();
@@ -90,33 +86,28 @@ pub fn start_recording_sync(_app: &AppHandle, state: &AppState) -> Result<(), St
     let (result_tx, result_rx) = oneshot::channel();
 
     // Preload models in background to reduce latency
-    {
-        let settings = state.settings.lock().unwrap();
-
-        // Preload the configured local transcription model (Whisper OR Parakeet, not both)
-        #[cfg(feature = "local-transcription")]
-        match provider {
-            TranscriptionProvider::LocalWhisper => {
-                if let Some(model_path) = settings.transcription.whisper_model_path() {
-                    whis_core::whisper_preload_model(&model_path);
-                }
+    #[cfg(feature = "local-transcription")]
+    match provider {
+        TranscriptionProvider::LocalWhisper => {
+            if let Some(ref model_path) = whisper_model_path {
+                whis_core::whisper_preload_model(model_path);
             }
-            TranscriptionProvider::LocalParakeet => {
-                if let Some(model_path) = settings.transcription.parakeet_model_path() {
-                    whis_core::preload_parakeet(&model_path);
-                }
+        }
+        TranscriptionProvider::LocalParakeet => {
+            if let Some(ref model_path) = parakeet_model_path {
+                whis_core::preload_parakeet(model_path);
             }
-            _ => {} // Cloud providers don't need preload
         }
-
-        // Preload Ollama if post-processing enabled
-        if settings.post_processing.processor == PostProcessor::Ollama {
-            settings.services.ollama.preload();
-        }
-
-        // Warm HTTP client for cloud providers to reduce first-request latency
-        let _ = whis_core::warmup_http_client();
+        _ => {} // Cloud providers don't need preload
     }
+
+    // Preload Ollama if post-processing enabled
+    if ollama_preload {
+        ollama_settings.preload();
+    }
+
+    // Warm HTTP client for cloud providers to reduce first-request latency
+    let _ = whis_core::warmup_http_client();
 
     // Branch based on provider type: realtime streaming vs chunked progressive
     if is_realtime {
@@ -134,7 +125,7 @@ pub fn start_recording_sync(_app: &AppHandle, state: &AppState) -> Result<(), St
                 let _ = result_tx.send(result);
             });
 
-            println!("Recording started (realtime streaming mode)...");
+            info!("Recording started (realtime streaming mode)");
         }
 
         #[cfg(not(feature = "realtime"))]
@@ -148,12 +139,11 @@ pub fn start_recording_sync(_app: &AppHandle, state: &AppState) -> Result<(), St
         // NON-REALTIME PATH: Use chunking + progressive transcription
         let (chunk_tx, chunk_rx) = mpsc::unbounded_channel();
 
-        // Create chunker config from settings
-        let target = state.settings.lock().unwrap().ui.chunk_duration_secs;
+        // Create chunker config from pre-extracted settings
         let chunker_config = ChunkerConfig {
-            target_duration_secs: target,
-            min_duration_secs: target * 2 / 3,
-            max_duration_secs: target * 4 / 3,
+            target_duration_secs: chunk_duration,
+            min_duration_secs: chunk_duration * 2 / 3,
+            max_duration_secs: chunk_duration * 4 / 3,
             vad_aware: vad_enabled,
         };
 
@@ -168,7 +158,7 @@ pub fn start_recording_sync(_app: &AppHandle, state: &AppState) -> Result<(), St
             let result: Result<String, String> = {
                 #[cfg(feature = "local-transcription")]
                 if provider == TranscriptionProvider::LocalParakeet {
-                    match Settings::load().transcription.parakeet_model_path() {
+                    match parakeet_model_path {
                         Some(model_path) => {
                             progressive_transcribe_local(&model_path, chunk_rx, None)
                                 .await
@@ -203,7 +193,7 @@ pub fn start_recording_sync(_app: &AppHandle, state: &AppState) -> Result<(), St
             let _ = result_tx.send(result);
         });
 
-        println!("Recording started (progressive mode)...");
+        info!("Recording started (progressive mode)");
     }
 
     // Store receiver for later retrieval

@@ -143,7 +143,7 @@ async fn progressive_record_and_transcribe(
     let mut recorder = AudioRecorder::new()?;
 
     // Configure VAD (disabled for realtime - they handle silence detection)
-    let settings = Settings::load();
+    let settings = Settings::load_cli();
     let vad_enabled = settings.ui.vad.enabled && !mic_config.no_vad && !is_realtime;
     recorder.set_vad(vad_enabled, settings.ui.vad.threshold);
 
@@ -158,7 +158,7 @@ async fn progressive_record_and_transcribe(
 
         // Load settings once for post-processing config
         let (post_processor, post_processor_api_key) = if mic_config.will_post_process {
-            let settings = Settings::load();
+            let settings = Settings::load_cli();
             let processor = match &settings.post_processing.processor {
                 whis_core::PostProcessor::None => None,
                 p => Some(p.to_string()),
@@ -264,7 +264,7 @@ async fn progressive_record_and_transcribe(
                 #[cfg(feature = "local-transcription")]
                 if provider == TranscriptionProvider::LocalParakeet {
                     // Local Parakeet progressive transcription
-                    let model_path = Settings::load()
+                    let model_path = Settings::load_cli()
                         .transcription
                         .parakeet_model_path()
                         .ok_or_else(|| anyhow::anyhow!("Parakeet model path not configured"))?;
@@ -339,7 +339,7 @@ async fn progressive_record_and_transcribe(
 fn preload_models(config: &modes::MicrophoneConfig) {
     #[cfg(feature = "local-transcription")]
     {
-        let settings = whis_core::Settings::load();
+        let settings = whis_core::Settings::load_cli();
 
         // Preload the configured local model (Whisper OR Parakeet, not both)
         match config.provider {
@@ -359,7 +359,7 @@ fn preload_models(config: &modes::MicrophoneConfig) {
 
     // Preload Ollama if post-processing enabled
     if config.will_post_process {
-        let settings = whis_core::Settings::load();
+        let settings = whis_core::Settings::load_cli();
         if settings.post_processing.processor == whis_core::PostProcessor::Ollama {
             settings.services.ollama.preload();
         }
@@ -388,7 +388,7 @@ async fn transcribe_file(
     let text = match &transcription_config.provider {
         #[cfg(feature = "local-transcription")]
         TranscriptionProvider::LocalParakeet => {
-            let model_path = whis_core::Settings::load()
+            let model_path = whis_core::Settings::load_cli()
                 .transcription
                 .parakeet_model_path()
                 .ok_or_else(|| anyhow::anyhow!("Parakeet model path not configured"))?;

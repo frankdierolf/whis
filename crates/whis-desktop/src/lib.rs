@@ -27,7 +27,25 @@ pub mod tray;
 mod window;
 
 use tauri::{Emitter, Manager};
+use tauri_plugin_store::StoreExt;
 use whis_core::{Settings, warn};
+
+/// Load settings from Tauri store, or return defaults if not present.
+fn load_settings_from_store(app: &tauri::AppHandle) -> Settings {
+    match app.store("settings.json") {
+        Ok(store) => match store.get("settings") {
+            Some(value) => serde_json::from_value(value.clone()).unwrap_or_else(|e| {
+                warn!("Failed to deserialize settings: {e}. Using defaults.");
+                Settings::default()
+            }),
+            None => Settings::default(),
+        },
+        Err(e) => {
+            warn!("Failed to load store: {e}. Using default settings.");
+            Settings::default()
+        }
+    }
+}
 
 pub fn run(start_in_tray: bool) {
     tauri::Builder::default()
@@ -45,21 +63,18 @@ pub fn run(start_in_tray: bool) {
             }
         }))
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_store::Builder::new().build())
         .setup(move |app| {
-            // Load settings from disk
-            let loaded_settings = Settings::load();
+            // Load settings from Tauri store
+            let loaded_settings = load_settings_from_store(app.handle());
 
             // Initialize state with tray availability
             app.manage(state::AppState::new(loaded_settings, true));
 
             // Initialize system tray (optional - may fail on tray-less environments)
-            let _tray_available = match tray::setup_tray(app) {
-                Ok(_) => true,
-                Err(e) => {
-                    warn!("Tray unavailable: {e}. Running in window mode.");
-                    false
-                }
-            };
+            if let Err(e) = tray::setup_tray(app) {
+                warn!("Tray unavailable: {e}. Running in window mode.");
+            }
 
             // Initialize floating bubble window (hidden by default)
             if let Err(e) = bubble::create_bubble_window(app.handle()) {
