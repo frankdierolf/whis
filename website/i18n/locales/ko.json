@@ -5,7 +5,8 @@
     "cli": "CLI",
     "desktop": "데스크톱",
     "mobile": "모바일",
-    "faq": "FAQ"
+    "faq": "FAQ",
+    "blog": "블로그"
   },
   "common": {
     "version": "v{version}",
@@ -243,5 +244,11 @@
         "answer": "<strong>Flatpak:</strong> <code>flatpak uninstall ink.whis.Whis</code><br><strong>AppImage:</strong> <code>--uninstall</code> 플래그로 실행한 후 파일을 삭제하세요.<br><strong>기타:</strong> 바이너리와 <code>~/.config/whis/</code> 폴더를 삭제하세요."
       }
     }
+  },
+  "blog": {
+    "title": "블로그 - whis",
+    "subtitle": "업데이트, 튜토리얼, 팁",
+    "metaDescription": "Linux 음성-텍스트 변환에 대한 업데이트, 튜토리얼, 팁이 담긴 whis 블로그.",
+    "noPosts": "아직 게시물이 없습니다. 곧 다시 확인해 주세요!"
   }
 }

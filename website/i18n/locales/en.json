@@ -5,7 +5,8 @@
     "cli": "cli",
     "desktop": "desktop",
     "mobile": "mobile",
-    "faq": "faq"
+    "faq": "faq",
+    "blog": "blog"
   },
   "common": {
     "version": "v{version}",
@@ -243,5 +244,11 @@
         "answer": "<strong>Flatpak:</strong> <code>flatpak uninstall ink.whis.Whis</code><br><strong>AppImage:</strong> Run with <code>--uninstall</code> flag, then delete the file.<br><strong>Other:</strong> Remove the binary and <code>~/.config/whis/</code> folder."
       }
     }
+  },
+  "blog": {
+    "title": "Blog - whis",
+    "subtitle": "Updates, tutorials, and insights",
+    "metaDescription": "whis blog with updates, tutorials, and insights about voice-to-text on Linux.",
+    "noPosts": "No posts yet. Check back soon!"
   }
 }

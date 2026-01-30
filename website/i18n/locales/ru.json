@@ -5,7 +5,8 @@
     "cli": "cli",
     "desktop": "десктоп",
     "mobile": "мобильное",
-    "faq": "вопросы"
+    "faq": "вопросы",
+    "blog": "блог"
   },
   "common": {
     "version": "v{version}",
@@ -243,5 +244,11 @@
         "answer": "<strong>Flatpak:</strong> <code>flatpak uninstall ink.whis.Whis</code><br><strong>AppImage:</strong> Запустите с флагом <code>--uninstall</code>, затем удалите файл.<br><strong>Другое:</strong> Удалите исполняемый файл и папку <code>~/.config/whis/</code>."
       }
     }
+  },
+  "blog": {
+    "title": "Блог - whis",
+    "subtitle": "Обновления, уроки и идеи",
+    "metaDescription": "Блог whis с обновлениями, уроками и идеями о голосе в текст на Linux.",
+    "noPosts": "Пока нет записей. Заходите позже!"
   }
 }
