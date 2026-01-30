@@ -11,6 +11,8 @@
 //! 3. Download model if not present
 //! 4. Save to settings
 
+use std::path::Path;
+
 use anyhow::Result;
 use whis_core::{Settings, TranscriptionProvider, model};
 
@@ -80,7 +82,7 @@ pub fn setup_transcription_local() -> Result<()> {
                     ParakeetModel
                         .models()
                         .iter()
-                        .find(|m| ParakeetModel.default_path(m.name) == *p)
+                        .find(|m| ParakeetModel.default_path(m.name) == Path::new(p))
                         .map(|m| m.name)
                 });
 
@@ -139,7 +141,7 @@ pub fn setup_transcription_local() -> Result<()> {
                     WhisperModel
                         .models()
                         .iter()
-                        .find(|m| WhisperModel.default_path(m.name) == *p)
+                        .find(|m| WhisperModel.default_path(m.name) == Path::new(p))
                         .map(|m| m.name)
                 });
 
