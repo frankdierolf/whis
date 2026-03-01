@@ -96,10 +96,7 @@ onMounted(async () => {
   })
 
   // Listen for window close event (Alt+F4, system close, etc.)
-  await listen('window-close-requested', async () => {
-    await settingsStore.flush()
-    await getCurrentWindow().close()
-  })
+  await listen('window-close-requested', closeWindow)
 })
 </script>
 
