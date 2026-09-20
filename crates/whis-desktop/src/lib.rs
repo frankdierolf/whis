@@ -97,6 +97,12 @@ pub fn run(start_in_tray: bool) {
         .on_window_event(|window, event| {
             use tauri::WindowEvent;
             if let WindowEvent::CloseRequested { api, .. } = event {
+                // Only main/settings run App.vue and its window-close-requested
+                // listener; the bubble has none, so intercepting its close would
+                // prevent_close() with nothing left to ever call destroy().
+                if window.label() == "bubble" {
+                    return;
+                }
                 // Prevent immediate close - emit event to frontend for graceful shutdown.
                 // Target only this window: emit() would broadcast to every webview and
                 // re-arm the same handler on each of them.
