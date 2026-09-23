@@ -98,7 +98,9 @@ onMounted(async () => {
   // Listen for window close event (Alt+F4, system close, etc.)
   await listen('window-close-requested', async () => {
     await settingsStore.flush()
-    await getCurrentWindow().close()
+    // destroy() bypasses CloseRequested; close() would re-enter it and loop forever
+    // since the backend always calls prevent_close().
+    await getCurrentWindow().destroy()
   })
 })
 </script>
